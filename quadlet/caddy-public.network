@@ -1,0 +1,5 @@
+[Unit]
+Description=Shared network for Caddy-exposed services
+
+[Network]
+NetworkName=caddy-public

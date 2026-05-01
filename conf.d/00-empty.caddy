@@ -1,0 +1,2 @@
+# Placeholder so /etc/caddy/conf.d/*.caddy always matches at least one file.
+# Add real optional site blocks in separate .caddy files.

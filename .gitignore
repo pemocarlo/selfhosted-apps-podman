@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+
+# Keep persistent Caddy directories, but do not commit live runtime state.
+data/*
+!data/.gitkeep
+config/*
+!config/.gitkeep

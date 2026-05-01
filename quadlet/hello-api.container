@@ -1,0 +1,14 @@
+[Unit]
+Description=Hello API backend
+
+[Container]
+Image=localhost/hello-api:latest
+ContainerName=hello-api
+Network=caddy-public.network
+AutoUpdate=local
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

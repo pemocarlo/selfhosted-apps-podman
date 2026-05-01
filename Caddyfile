@@ -1,0 +1,9 @@
+{$SITE_ADDRESS:http://localhost:80} {
+	root * /srv
+	encode zstd gzip
+	file_server
+}
+
+# Optional extra virtual hosts, such as reverse proxies, live here.
+# Files must end in .caddy to be loaded.
+import /etc/caddy/conf.d/*.caddy

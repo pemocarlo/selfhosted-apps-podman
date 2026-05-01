@@ -1,0 +1,37 @@
+services:
+  caddy:
+    image: docker.io/library/caddy:2-alpine
+    container_name: caddy-static
+    restart: unless-stopped
+    env_file:
+      - ./caddy.env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
+      - ./conf.d:/etc/caddy/conf.d:ro,Z
+      - ./site:/srv:ro,Z
+      - ./data:/data:Z
+      - ./config:/config:Z
+    depends_on:
+      - hello-api
+    networks:
+      - caddy-public
+
+  hello-api:
+    build:
+      context: ./apps/hello-api
+      dockerfile: Containerfile
+    image: localhost/hello-api:latest
+    container_name: hello-api
+    restart: unless-stopped
+    expose:
+      - "8000"
+    networks:
+      - caddy-public
+
+networks:
+  caddy-public:
+    name: caddy-public

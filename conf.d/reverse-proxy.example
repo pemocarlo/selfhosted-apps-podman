@@ -1,0 +1,11 @@
+# To enable this reverse proxy, copy this file to a name ending in .caddy,
+# for example:
+# cp conf.d/reverse-proxy.example conf.d/app.caddy
+#
+# Use a host name that is different from SITE_ADDRESS unless you intentionally
+# want to replace the static site for that host.
+
+app.myhostname.com {
+	encode zstd gzip
+	reverse_proxy app-container-name:3000
+}
