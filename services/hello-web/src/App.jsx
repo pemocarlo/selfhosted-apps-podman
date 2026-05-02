@@ -40,7 +40,7 @@ export default function App() {
         <p className="eyebrow">React + FastAPI</p>
         <h1>Hello Web</h1>
         <p className="message">{error || message}</p>
-        <p className="hint">This React app calls <code>/api/hello</code>, proxied by Vite to the FastAPI service in development.</p>
+        <p className="hint">This React app calls <code>/api/hello</code>. Vite proxies it in development; Caddy proxies it in production.</p>
       </section>
     </main>
   );

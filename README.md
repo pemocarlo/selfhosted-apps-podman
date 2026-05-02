@@ -8,7 +8,7 @@ The production runtime is Podman + systemd Quadlets. Compose is included only fo
 
 - `gateway/`: shared Caddy reverse proxy, TLS, static landing page, and shared Podman network.
 - `services/hello-api/`: FastAPI backend managed by `uv`.
-- `services/hello-web/`: minimal React app that calls the Python API. Development only.
+- `services/hello-web/`: minimal React app that calls the Python API.
 - `services/grocy/`: Grocy household ERP service.
 - `compose.dev.yml`: development stack for `hello-web` + `hello-api`.
 
@@ -18,7 +18,7 @@ The production runtime is Podman + systemd Quadlets. Compose is included only fo
 | --- | --- | --- | --- |
 | Gateway | `hello.myhostname.com` | Caddy edge, TLS, static landing page | Quadlet |
 | Hello API | `api.myhostname.com` | FastAPI backend | Quadlet |
-| Hello Web | `localhost:5173` | React development UI | Compose dev only |
+| Hello Web | `myapp.myhostname.com` | React frontend for Hello API | Quadlet, Compose dev |
 | Grocy | `grocy.myhostname.com` | Household inventory app | Quadlet |
 
 ## Production Model
@@ -75,6 +75,7 @@ Local defaults:
 ```sh
 SITE_ADDRESS=http://localhost:80
 HELLO_API_SITE_ADDRESS=http://api.localhost:80
+HELLO_WEB_SITE_ADDRESS=http://myapp.localhost:80
 GROCY_SITE_ADDRESS=http://grocy.localhost:80
 ```
 
@@ -83,6 +84,7 @@ Production example:
 ```sh
 SITE_ADDRESS=hello.myhostname.com
 HELLO_API_SITE_ADDRESS=api.myhostname.com
+HELLO_WEB_SITE_ADDRESS=myapp.myhostname.com
 GROCY_SITE_ADDRESS=grocy.myhostname.com
 ```
 
@@ -160,6 +162,35 @@ curl -i -H 'Host: api.localhost' http://127.0.0.1:8080/api/hello
 
 More details: `services/hello-api/README.md`.
 
+## Deploy Hello Web
+
+The React app is deployed as its own static container and exposed by Caddy at `HELLO_WEB_SITE_ADDRESS`. Its Caddy route also proxies `/api/*` to `hello-api`, so the browser calls the API on the same hostname.
+
+Build the image:
+
+```sh
+podman build -t localhost/hello-web:latest -f services/hello-web/Containerfile services/hello-web
+```
+
+Install and start the service:
+
+```sh
+cp services/hello-web/quadlet/hello-web.container ~/.config/containers/systemd/
+systemctl --user daemon-reload
+systemctl --user start hello-web.service
+systemctl --user enable hello-web.service
+systemctl --user restart caddy-static.service
+```
+
+Test locally through Caddy:
+
+```sh
+curl -i -H 'Host: myapp.localhost' http://127.0.0.1:8080
+curl -i -H 'Host: myapp.localhost' http://127.0.0.1:8080/api/hello
+```
+
+More details: `services/hello-web/README.md`.
+
 ## Deploy Grocy
 
 Copy persistent config and environment:
@@ -210,6 +241,12 @@ Test the API directly:
 
 ```sh
 curl http://localhost:8000/api/hello
+```
+
+Test the API through the React dev server proxy:
+
+```sh
+curl http://localhost:5173/api/hello
 ```
 
 Stop:
@@ -268,7 +305,7 @@ Minimal Caddy route:
 List services:
 
 ```sh
-systemctl --user list-units '*caddy*' '*hello-api*' '*grocy*'
+systemctl --user list-units '*caddy*' '*hello-api*' '*hello-web*' '*grocy*'
 ```
 
 Check logs:
@@ -276,6 +313,7 @@ Check logs:
 ```sh
 journalctl --user -u caddy-static.service -f
 journalctl --user -u hello-api.service -f
+journalctl --user -u hello-web.service -f
 journalctl --user -u grocy.service -f
 ```
 
@@ -285,6 +323,7 @@ Check containers:
 podman ps
 podman logs caddy-static
 podman logs hello-api
+podman logs hello-web
 podman logs grocy
 ```
 

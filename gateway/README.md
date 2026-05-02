@@ -9,6 +9,7 @@ Apps join the `caddy-public` Podman network and add one Caddy drop-in file under
 - `Caddyfile`: base Caddy config.
 - `caddy.env.example`: hostname template. Copy this to `caddy.env` on the server.
 - `conf.d/*.caddy`: app routes loaded by Caddy.
+- `conf.d/hello-web.caddy`: exposes the React app and proxies `/api/*` to FastAPI on the same hostname.
 - `site/`: static landing page.
 - `quadlet/caddy-public.network`: shared Podman network.
 - `quadlet/caddy-local.container`: local gateway on `127.0.0.1:8080`.
@@ -33,6 +34,7 @@ Test:
 
 ```sh
 curl -i http://localhost:8080
+curl -i -H 'Host: myapp.localhost' http://127.0.0.1:8080/api/hello
 ```
 
 ## Deploy In Production

@@ -1,0 +1,15 @@
+[Unit]
+Description=Hello Web frontend
+After=hello-api.service
+
+[Container]
+Image=localhost/hello-web:latest
+ContainerName=hello-web
+Network=caddy-public.network
+AutoUpdate=local
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
