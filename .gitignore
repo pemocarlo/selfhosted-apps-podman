@@ -3,9 +3,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.pyc
-node_modules/
-dist/
-.vite/
 
 # Keep persistent directories, but do not commit live runtime state.
 gateway/data/*
