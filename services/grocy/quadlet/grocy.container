@@ -1,0 +1,16 @@
+[Unit]
+Description=Grocy household ERP
+
+[Container]
+Image=lscr.io/linuxserver/grocy:latest
+ContainerName=grocy
+Network=caddy-public.network
+EnvironmentFile=%h/selfhosted/services/grocy/grocy.env
+Volume=%h/selfhosted/services/grocy/config:/config:Z
+AutoUpdate=registry
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

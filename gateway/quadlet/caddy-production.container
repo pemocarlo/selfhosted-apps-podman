@@ -1,0 +1,23 @@
+[Unit]
+Description=Caddy static site - production
+
+[Container]
+Image=docker.io/library/caddy:2-alpine
+ContainerName=caddy-static
+EnvironmentFile=%h/selfhosted/gateway/caddy.env
+PublishPort=80:80
+PublishPort=443:443
+PublishPort=443:443/udp
+Network=caddy-public.network
+Volume=%h/selfhosted/gateway/Caddyfile:/etc/caddy/Caddyfile:Z,ro
+Volume=%h/selfhosted/gateway/conf.d:/etc/caddy/conf.d:Z,ro
+Volume=%h/selfhosted/gateway/site:/srv:Z,ro
+Volume=%h/selfhosted/gateway/data:/data:Z
+Volume=%h/selfhosted/gateway/config:/config:Z
+AutoUpdate=registry
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

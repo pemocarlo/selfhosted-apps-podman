@@ -1,6 +1,6 @@
 # To enable this reverse proxy, copy this file to a name ending in .caddy,
 # for example:
-# cp conf.d/reverse-proxy.example conf.d/app.caddy
+# cp gateway/conf.d/reverse-proxy.example gateway/conf.d/app.caddy
 #
 # Use a host name that is different from SITE_ADDRESS unless you intentionally
 # want to replace the static site for that host.

@@ -3,9 +3,14 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.pyc
+node_modules/
+dist/
+.vite/
 
-# Keep persistent Caddy directories, but do not commit live runtime state.
-data/*
-!data/.gitkeep
-config/*
-!config/.gitkeep
+# Keep persistent directories, but do not commit live runtime state.
+gateway/data/*
+!gateway/data/.gitkeep
+gateway/config/*
+!gateway/config/.gitkeep
+services/*/config/*
+!services/*/config/.gitkeep

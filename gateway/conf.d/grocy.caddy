@@ -1,0 +1,4 @@
+{$GROCY_SITE_ADDRESS:http://grocy.localhost:80} {
+	encode zstd gzip
+	reverse_proxy grocy:80
+}

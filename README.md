@@ -1,358 +1,312 @@
-# Caddy Gateway With FastAPI, Podman Quadlets, And Compose
+# Selfhosted Apps With Podman Quadlets
 
-This project runs a shared Caddy gateway plus a small FastAPI backend.
+This repository is organized like a small self-hosted app catalog. The shared Caddy gateway lives in `gateway/`, and each app lives in `services/<name>/` with its own README, Quadlet, persistent data, and Caddy route.
 
-Caddy serves a static HTML page and reverse proxies API traffic to the backend. The services are intentionally independent: Caddy is the reusable edge/gateway service, and each app can join the shared `caddy-public` Podman network and add its own Caddy drop-in config.
+The production runtime is Podman + systemd Quadlets. Compose is included only for development of the React + FastAPI example.
 
-## Recommended Layout
+## Layout
 
-For this tutorial, a single repository is the best layout because it keeps the gateway, one example backend, Quadlets, and Compose files together:
+- `gateway/`: shared Caddy reverse proxy, TLS, static landing page, and shared Podman network.
+- `services/hello-api/`: FastAPI backend managed by `uv`.
+- `services/hello-web/`: minimal React app that calls the Python API. Development only.
+- `services/grocy/`: Grocy household ERP service.
+- `compose.dev.yml`: development stack for `hello-web` + `hello-api`.
 
-- `Caddyfile`: base shared Caddy config.
-- `caddy.env`: Caddy hostnames for local or production.
-- `conf.d/`: Caddy drop-in site configs for apps.
-- `site/`: static HTML served by Caddy.
-- `apps/hello-api/`: FastAPI backend managed with `uv` and `pyproject.toml`.
-- `quadlet/`: systemd Quadlets for Podman deployment.
-- `compose.yml`: local Compose stack.
-- `compose.production.yml`: production-style Compose stack using ports `80` and `443`.
-- `data/` and `config/`: persistent Caddy runtime state and certificates.
+## Services
 
-For larger production use, split this into one gateway/deployment repo plus separate app repos. Keep the shared Caddy service independent, and let each app provide its own container image plus `conf.d/<app>.caddy` reverse-proxy file.
+| Service | Public Host Example | Role | Deployment |
+| --- | --- | --- | --- |
+| Gateway | `hello.myhostname.com` | Caddy edge, TLS, static landing page | Quadlet |
+| Hello API | `api.myhostname.com` | FastAPI backend | Quadlet |
+| Hello Web | `localhost:5173` | React development UI | Compose dev only |
+| Grocy | `grocy.myhostname.com` | Household inventory app | Quadlet |
 
-## Hostnames
+## Production Model
 
-Local defaults in `caddy.env`:
+The gateway is independent because many apps can use it. Every production app should:
+
+- Run as its own Podman container or pod.
+- Join the shared `caddy-public` network.
+- Store persistent data under `~/selfhosted/services/<name>/`.
+- Add one route under `~/selfhosted/gateway/conf.d/<name>.caddy`.
+- Have its own `services/<name>/README.md` with deploy, update, backup, and test notes.
+
+This keeps Caddy stable while apps can be added, restarted, upgraded, or removed independently.
+
+## Initial Server Setup
+
+Install Podman with Quadlet support and make sure user services work:
+
+```sh
+podman --version
+systemctl --user status
+```
+
+Enable user services to keep running after logout:
+
+```sh
+loginctl enable-linger "$USER"
+```
+
+Create the runtime root:
+
+```sh
+mkdir -p ~/selfhosted
+```
+
+## Deploy Gateway
+
+Copy gateway files:
+
+```sh
+mkdir -p ~/selfhosted/gateway
+cp -a gateway/Caddyfile gateway/conf.d gateway/site gateway/data gateway/config ~/selfhosted/gateway/
+cp gateway/caddy.env.example ~/selfhosted/gateway/caddy.env
+```
+
+Edit hostnames:
+
+```sh
+nano ~/selfhosted/gateway/caddy.env
+```
+
+Local defaults:
 
 ```sh
 SITE_ADDRESS=http://localhost:80
-API_SITE_ADDRESS=http://api.localhost:80
+HELLO_API_SITE_ADDRESS=http://api.localhost:80
+GROCY_SITE_ADDRESS=http://grocy.localhost:80
 ```
-
-With the local Quadlet or local Compose file, container port `80` is published as `127.0.0.1:8080`, so test URLs are:
-
-- Static site: `http://localhost:8080`
-- API through Caddy: `http://api.localhost:8080/api/hello`
 
 Production example:
 
 ```sh
 SITE_ADDRESS=hello.myhostname.com
-API_SITE_ADDRESS=api.myhostname.com
+HELLO_API_SITE_ADDRESS=api.myhostname.com
+GROCY_SITE_ADDRESS=grocy.myhostname.com
 ```
 
-Caddy automatically requests and renews TLS certificates for real public hostnames when DNS points to the server and ports `80` and `443` are reachable.
-
-## FastAPI Development With uv
-
-Install `uv` if needed:
-
-```sh
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Run the API directly during development:
-
-```sh
-cd apps/hello-api
-uv sync
-uv run uvicorn hello_api.main:app --reload
-```
-
-Test the API directly:
-
-```sh
-curl http://localhost:8000/api/hello
-curl http://localhost:8000/api/health
-```
-
-Run tests:
-
-```sh
-cd apps/hello-api
-uv run pytest
-```
-
-Lock dependencies for repeatable builds:
-
-```sh
-cd apps/hello-api
-uv lock
-```
-
-## Local Stack With Compose
-
-Use this for the fastest local full-stack test.
-
-Start the stack with Podman Compose:
-
-```sh
-podman compose up --build
-```
-
-If you use Docker Compose instead:
-
-```sh
-docker compose up --build
-```
-
-Test through Caddy:
-
-```sh
-curl -i http://localhost:8080
-curl -i http://api.localhost:8080/api/hello
-curl -i http://api.localhost:8080/api/health
-```
-
-If your system does not resolve `api.localhost`, send the host header manually:
-
-```sh
-curl -i -H 'Host: api.localhost' http://127.0.0.1:8080/api/hello
-```
-
-Stop the stack:
-
-```sh
-podman compose down
-```
-
-## Local Stack With Quadlets
-
-The Quadlet setup uses rootless Podman and systemd user services.
-
-1. Copy gateway files to the runtime path used by the Quadlets:
-
-```sh
-mkdir -p ~/caddy-static
-cp -a Caddyfile caddy.env conf.d site data config ~/caddy-static/
-```
-
-2. Build the backend image:
-
-```sh
-podman build -t localhost/hello-api:latest -f apps/hello-api/Containerfile apps/hello-api
-```
-
-3. Install the shared network, backend, and local Caddy Quadlets:
+Install local gateway Quadlets:
 
 ```sh
 mkdir -p ~/.config/containers/systemd
-cp quadlet/caddy-public.network ~/.config/containers/systemd/
-cp quadlet/hello-api.container ~/.config/containers/systemd/
-cp quadlet/caddy-local.container ~/.config/containers/systemd/caddy-static.container
+cp gateway/quadlet/caddy-public.network ~/.config/containers/systemd/
+cp gateway/quadlet/caddy-local.container ~/.config/containers/systemd/caddy-static.container
 systemctl --user daemon-reload
+systemctl --user start caddy-static.service
 ```
 
-4. Start services:
+For production, use the production gateway unit instead:
 
 ```sh
-systemctl --user start hello-api.service caddy-static.service
-```
-
-5. Test:
-
-```sh
-curl -i http://localhost:8080
-curl -i http://api.localhost:8080/api/hello
-```
-
-6. Enable services on boot:
-
-```sh
-systemctl --user enable hello-api.service caddy-static.service
-loginctl enable-linger "$USER"
-```
-
-Check logs:
-
-```sh
-journalctl --user -u hello-api.service -f
-journalctl --user -u caddy-static.service -f
-```
-
-## Production With Quadlets
-
-Use this when you have a real server and DNS names such as `hello.myhostname.com` and `api.myhostname.com`.
-
-1. Point DNS to your server:
-
-- Create an `A` record for `hello.myhostname.com`.
-- Create an `A` record for `api.myhostname.com`.
-- Create `AAAA` records too if the server has IPv6.
-
-2. Deploy gateway files:
-
-```sh
-mkdir -p ~/caddy-static
-cp -a Caddyfile caddy.env conf.d site data config ~/caddy-static/
-```
-
-3. Edit production hostnames:
-
-```sh
-nano ~/caddy-static/caddy.env
-```
-
-Example:
-
-```sh
-SITE_ADDRESS=hello.myhostname.com
-API_SITE_ADDRESS=api.myhostname.com
-```
-
-4. Build or pull the backend image:
-
-```sh
-podman build -t localhost/hello-api:latest -f apps/hello-api/Containerfile apps/hello-api
-```
-
-5. Install production Quadlets:
-
-```sh
-mkdir -p ~/.config/containers/systemd
-cp quadlet/caddy-public.network ~/.config/containers/systemd/
-cp quadlet/hello-api.container ~/.config/containers/systemd/
-cp quadlet/caddy-production.container ~/.config/containers/systemd/caddy-static.container
+cp gateway/quadlet/caddy-production.container ~/.config/containers/systemd/caddy-static.container
 systemctl --user daemon-reload
+systemctl --user restart caddy-static.service
+systemctl --user enable caddy-static.service
 ```
 
-6. Allow rootless Podman to bind ports `80` and `443` if needed:
+## Do We Need Port 80?
+
+Not strictly, but yes for the recommended production setup.
+
+Caddy can manage public certificates most reliably when TCP `80` and TCP `443` are reachable. Port `80` is used for ACME HTTP-01 certificate challenges and for redirecting plain HTTP to HTTPS. Port `443` serves HTTPS. UDP `443` enables HTTP/3.
+
+If you cannot expose TCP `80`, options are:
+
+- Use TLS-ALPN-01 on TCP `443`; this can work but removes the normal HTTP redirect path.
+- Use DNS-01 with a custom Caddy image containing your DNS provider plugin.
+- Use private/internal certificates if the service is not public.
+
+For a normal public VPS, open TCP `80`, TCP `443`, and optionally UDP `443`.
+
+For rootless Podman low ports, allow binding below `1024`:
 
 ```sh
 sudo sysctl net.ipv4.ip_unprivileged_port_start=80
-```
-
-Make it persistent:
-
-```sh
 printf 'net.ipv4.ip_unprivileged_port_start=80\n' | sudo tee /etc/sysctl.d/99-rootless-podman-low-ports.conf
 sudo sysctl --system
 ```
 
-7. Open firewall ports:
+Open firewall ports if you use firewalld:
 
 ```sh
 sudo firewall-cmd --add-service=http --add-service=https --permanent
 sudo firewall-cmd --reload
 ```
 
-If you do not use firewalld, open inbound TCP `80`, TCP `443`, and optionally UDP `443` with your firewall or cloud security group.
+## Deploy Hello API
 
-8. Start and enable services:
-
-```sh
-systemctl --user start hello-api.service caddy-static.service
-systemctl --user enable hello-api.service caddy-static.service
-loginctl enable-linger "$USER"
-```
-
-9. Test from another machine:
+Build the image:
 
 ```sh
-curl -I https://hello.myhostname.com
-curl -i https://api.myhostname.com/api/hello
+podman build -t localhost/hello-api:latest -f services/hello-api/Containerfile services/hello-api
 ```
 
-## Production-Style Compose
-
-Compose is useful for testing the same topology without systemd Quadlets.
-
-Edit `caddy.env` for production hostnames, then run:
+Install and start the service:
 
 ```sh
-podman compose -f compose.production.yml up --build -d
-```
-
-Stop it:
-
-```sh
-podman compose -f compose.production.yml down
-```
-
-## Adding Another App
-
-1. Build or pull the app container image.
-2. Attach the app container to the `caddy-public` network.
-3. Add a Caddy drop-in under `conf.d/`, for example `conf.d/my-app.caddy`:
-
-```caddyfile
-my-app.myhostname.com {
-	encode zstd gzip
-	reverse_proxy my-app-container:3000
-}
-```
-
-4. Restart Caddy:
-
-```sh
+cp services/hello-api/quadlet/hello-api.container ~/.config/containers/systemd/
+systemctl --user daemon-reload
+systemctl --user start hello-api.service
+systemctl --user enable hello-api.service
 systemctl --user restart caddy-static.service
 ```
 
-Each app should use a unique hostname unless you intentionally route by path in a single shared site block.
-
-## Updating The Static Page
-
-Edit:
+Test locally through Caddy:
 
 ```sh
-nano ~/caddy-static/site/index.html
+curl -i -H 'Host: api.localhost' http://127.0.0.1:8080/api/hello
 ```
 
-No restart is needed for normal static file changes.
+More details: `services/hello-api/README.md`.
 
-## Rebuilding The Backend
+## Deploy Grocy
 
-After changing backend code:
+Copy persistent config and environment:
 
 ```sh
-podman build -t localhost/hello-api:latest -f apps/hello-api/Containerfile apps/hello-api
-systemctl --user restart hello-api.service
+mkdir -p ~/selfhosted/services/grocy
+cp -a services/grocy/config ~/selfhosted/services/grocy/
+cp services/grocy/grocy.env.example ~/selfhosted/services/grocy/grocy.env
+nano ~/selfhosted/services/grocy/grocy.env
 ```
 
-With Compose:
+Install and start:
 
 ```sh
-podman compose up --build -d
+cp services/grocy/quadlet/grocy.container ~/.config/containers/systemd/
+systemctl --user daemon-reload
+systemctl --user start grocy.service
+systemctl --user enable grocy.service
+systemctl --user restart caddy-static.service
 ```
 
-## Troubleshooting
+Test locally through Caddy:
+
+```sh
+curl -I -H 'Host: grocy.localhost' http://127.0.0.1:8080
+```
+
+More details: `services/grocy/README.md`.
+
+## Development: React + FastAPI
+
+The development Compose file runs only the React app and Python API. It does not deploy Grocy or the production gateway.
+
+Start:
+
+```sh
+systemctl --user start podman.socket
+podman compose -f compose.dev.yml up --build
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
+
+Test the API directly:
+
+```sh
+curl http://localhost:8000/api/hello
+```
+
+Stop:
+
+```sh
+podman compose -f compose.dev.yml down
+```
+
+If `podman compose` reports a missing `/run/user/.../podman.sock`, start the socket with `systemctl --user start podman.socket` and try again.
+
+More details: `services/hello-web/README.md`.
+
+## Add A New Service
+
+1. Create a directory: `services/my-service/`.
+2. Add `services/my-service/README.md` with deploy, update, backup, and test steps.
+3. Add persistent directories such as `services/my-service/config/.gitkeep` if needed.
+4. Add an environment template such as `services/my-service/my-service.env.example` if needed.
+5. Add a Quadlet at `services/my-service/quadlet/my-service.container`.
+6. Attach the Quadlet to `Network=caddy-public.network`.
+7. Add a route at `gateway/conf.d/my-service.caddy`.
+8. Add a hostname variable to `gateway/caddy.env.example` if the route should be environment-driven.
+9. Deploy service files to `~/selfhosted/services/my-service/`.
+10. Copy the Quadlet to `~/.config/containers/systemd/`, reload systemd, start the service, and restart Caddy.
+
+Minimal Quadlet example:
+
+```ini
+[Unit]
+Description=My Service
+
+[Container]
+Image=example/my-service:latest
+ContainerName=my-service
+Network=caddy-public.network
+Volume=%h/selfhosted/services/my-service/config:/config:Z
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
+
+Minimal Caddy route:
+
+```caddyfile
+{$MY_SERVICE_SITE_ADDRESS:my-service.example.com} {
+	encode zstd gzip
+	reverse_proxy my-service:3000
+}
+```
+
+## Operations
 
 List services:
 
 ```sh
-systemctl --user list-units '*caddy*' '*hello-api*'
+systemctl --user list-units '*caddy*' '*hello-api*' '*grocy*'
 ```
 
-Check service logs:
+Check logs:
 
 ```sh
 journalctl --user -u caddy-static.service -f
 journalctl --user -u hello-api.service -f
+journalctl --user -u grocy.service -f
 ```
 
-Check container logs:
+Check containers:
 
 ```sh
+podman ps
 podman logs caddy-static
 podman logs hello-api
+podman logs grocy
 ```
 
-Check the shared network:
+Reload Quadlet changes:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user restart caddy-static.service
+```
+
+Inspect shared network:
 
 ```sh
 podman network inspect caddy-public
 ```
 
-Reload after changing Quadlet files:
+## Backups
 
-```sh
-systemctl --user daemon-reload
-systemctl --user restart hello-api.service caddy-static.service
-```
+Back up at least these runtime directories:
 
-If production TLS fails, verify:
+- `~/selfhosted/gateway/data`
+- `~/selfhosted/gateway/config`
+- `~/selfhosted/services/grocy/config`
 
-- DNS points to this server for every configured hostname.
-- Ports `80` and `443` are reachable from the internet.
-- No other process is already using ports `80` or `443`.
-- The server clock is correct.
+The `hello-api` example has no persistent runtime data.

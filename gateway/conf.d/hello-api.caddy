@@ -1,0 +1,4 @@
+{$HELLO_API_SITE_ADDRESS:http://api.localhost:80} {
+	encode zstd gzip
+	reverse_proxy hello-api:8000
+}
