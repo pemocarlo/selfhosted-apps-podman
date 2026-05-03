@@ -34,8 +34,9 @@ mkdir -p ~/.config/containers/systemd
 cp services/grocy/quadlet/grocy.container ~/.config/containers/systemd/
 systemctl --user daemon-reload
 systemctl --user start grocy.service
-systemctl --user enable grocy.service
 ```
+
+Do not run `systemctl --user enable grocy.service`; Quadlet services are generated. Autostart is controlled by `[Install] WantedBy=default.target` in `grocy.container`.
 
 Make sure the gateway has `gateway/conf.d/grocy.caddy` deployed and that `GROCY_SITE_ADDRESS` is set in `~/selfhosted/gateway/caddy.env`.
 

@@ -9,7 +9,6 @@ Apps join the `caddy-public` Podman network and add one Caddy drop-in file under
 - `Caddyfile`: base Caddy config.
 - `caddy.env.example`: hostname template. Copy this to `caddy.env` on the server.
 - `conf.d/*.caddy`: app routes loaded by Caddy.
-- `conf.d/hello-web.caddy`: exposes the React app and proxies `/api/*` to FastAPI on the same hostname.
 - `site/`: static landing page.
 - `quadlet/caddy-public.network`: shared Podman network.
 - `quadlet/caddy-local.container`: local gateway on `127.0.0.1:8080`.
@@ -34,7 +33,6 @@ Test:
 
 ```sh
 curl -i http://localhost:8080
-curl -i -H 'Host: myapp.localhost' http://127.0.0.1:8080/api/hello
 ```
 
 ## Deploy In Production
@@ -49,9 +47,10 @@ cp gateway/quadlet/caddy-public.network ~/.config/containers/systemd/
 cp gateway/quadlet/caddy-production.container ~/.config/containers/systemd/caddy-static.container
 systemctl --user daemon-reload
 systemctl --user start caddy-static.service
-systemctl --user enable caddy-static.service
 loginctl enable-linger "$USER"
 ```
+
+Do not run `systemctl --user enable caddy-static.service`; Quadlet services are generated. Autostart is controlled by `[Install] WantedBy=default.target` in `caddy-local.container` or `caddy-production.container`.
 
 ## Port 80 In Production
 
@@ -74,10 +73,16 @@ For normal public self-hosting, keep TCP `80` open.
 
 ## Add A Route
 
-Add a file such as `gateway/conf.d/my-app.caddy`:
+Add a hostname variable to `gateway/caddy.env.example` and the deployed `~/selfhosted/gateway/caddy.env`:
+
+```sh
+MY_APP_SITE_ADDRESS=my-app.example.com
+```
+
+Then add a file such as `gateway/conf.d/my-app.caddy`:
 
 ```caddyfile
-my-app.example.com {
+{$MY_APP_SITE_ADDRESS:http://my-app.localhost:80} {
 	encode zstd gzip
 	reverse_proxy my-app:3000
 }
