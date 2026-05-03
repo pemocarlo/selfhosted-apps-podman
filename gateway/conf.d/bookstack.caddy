@@ -1,0 +1,4 @@
+{$BOOKSTACK_SITE_ADDRESS:http://bookstack.localhost:80} {
+	encode zstd gzip
+	reverse_proxy bookstack:8080
+}

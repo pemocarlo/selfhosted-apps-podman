@@ -1,0 +1,21 @@
+[Unit]
+Description=BookStack documentation wiki
+Requires=bookstack-db.container
+After=bookstack-db.container
+
+[Container]
+Image=docker.io/solidnerd/bookstack:26.3.4
+ContainerName=bookstack
+Network=bookstack-internal.network
+Network=caddy-public.network
+EnvironmentFile=%h/selfhosted/services/bookstack/bookstack.env
+Volume=%h/selfhosted/services/bookstack/public-uploads:/var/www/bookstack/public/uploads:Z
+Volume=%h/selfhosted/services/bookstack/storage-uploads:/var/www/bookstack/storage/uploads:Z
+AutoUpdate=registry
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target

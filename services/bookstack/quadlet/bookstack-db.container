@@ -1,0 +1,17 @@
+[Unit]
+Description=BookStack database
+
+[Container]
+Image=docker.io/library/mysql:9.2.0
+ContainerName=bookstack-db
+Network=bookstack-internal.network
+EnvironmentFile=%h/selfhosted/services/bookstack/bookstack-db.env
+Volume=%h/selfhosted/services/bookstack/mysql:/var/lib/mysql:Z
+AutoUpdate=registry
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target
