@@ -52,9 +52,10 @@ Do not delete runtime data. Do not run `systemctl --user enable` on generated Qu
 ## Troubleshooting
 
 ```sh
+python3 -m py_compile scripts/selfhosted.py
 bash -n scripts/selfhosted
 git diff --check
-scripts/selfhosted status all
+uv run --script scripts/selfhosted.py status all
 systemctl --user cat <unit>.service
 journalctl --user -u <unit>.service -f
 podman logs <container>
@@ -79,10 +80,10 @@ If Podman runtime access is blocked in your shell, run the same commands on the 
 ## Maintenance
 
 ```sh
-scripts/selfhosted update <name>
-scripts/selfhosted update all
-scripts/selfhosted deploy app <name>
-scripts/selfhosted deploy gateway production
+uv run --script scripts/selfhosted.py update <name>
+uv run --script scripts/selfhosted.py update all
+uv run --script scripts/selfhosted.py deploy app <name>
+uv run --script scripts/selfhosted.py deploy gateway production
 podman images
 podman image prune
 ```

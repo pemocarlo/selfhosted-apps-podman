@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure SSH
         env:
@@ -98,4 +98,4 @@ jobs:
           esac
 
           ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" \
-            "cd '$DEPLOY_PATH' && bash scripts/selfhosted $COMMAND"
+            "cd '$DEPLOY_PATH' && uv run --script scripts/selfhosted.py $COMMAND"

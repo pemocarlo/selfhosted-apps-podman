@@ -31,13 +31,13 @@ BOOKSTACK_SITE_ADDRESS=bookstack.example.com
 
 ## Deploy
 
-Before deploy, set matching `DB_PASSWORD` and `MYSQL_PASSWORD`, unique `APP_KEY`, and exact public `APP_URL` in generated runtime env files. `scripts/selfhosted deploy app bookstack` creates missing env files, then stops if placeholders remain.
+Before deploy, set matching `DB_PASSWORD` and `MYSQL_PASSWORD`, unique `APP_KEY`, and exact public `APP_URL` in generated runtime env files. `uv run --script scripts/selfhosted.py deploy app bookstack` creates missing env files, then stops if placeholders remain.
 
 ```sh
 openssl rand -base64 32
 nano ~/selfhosted/services/bookstack/bookstack.env
 nano ~/selfhosted/services/bookstack/bookstack-db.env
-scripts/selfhosted deploy app bookstack
+uv run --script scripts/selfhosted.py deploy app bookstack
 ```
 
 Set `BOOKSTACK_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`. Change default login `admin@admin.com / password` immediately.

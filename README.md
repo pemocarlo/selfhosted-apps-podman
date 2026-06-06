@@ -6,7 +6,8 @@ Rootless Podman Quadlets run independent apps behind one Caddy gateway. Applicat
 
 - `gateway/`: shared Caddy gateway, public network, routes, and static landing page.
 - `services/<name>/`: one independently deployable app or app group.
-- `scripts/selfhosted`: canonical deploy, disable, update, and status commands.
+- `scripts/selfhosted.py`: canonical deploy, disable, update, and status commands. Run with `uv`.
+- `scripts/selfhosted`: Bash fallback kept for now.
 - `.github/workflows/deploy.yml`: SSH deployment from GitHub Actions.
 - `docs/operations.md`: manual install, troubleshooting, and maintenance.
 
@@ -27,25 +28,25 @@ Run from repository root on the VPS:
 
 ```sh
 # First deploy.
-scripts/selfhosted deploy gateway production
-scripts/selfhosted deploy app grocy
-scripts/selfhosted deploy all production
+uv run --script scripts/selfhosted.py deploy gateway production
+uv run --script scripts/selfhosted.py deploy app grocy
+uv run --script scripts/selfhosted.py deploy all production
 
 # Independent lifecycle. Disable persists across deploy/update all.
-scripts/selfhosted disable grocy
-scripts/selfhosted deploy app grocy
-scripts/selfhosted status grocy
+uv run --script scripts/selfhosted.py disable grocy
+uv run --script scripts/selfhosted.py deploy app grocy
+uv run --script scripts/selfhosted.py status grocy
 
 # Pull configured registry images and restart only selected component.
-scripts/selfhosted update grocy
-scripts/selfhosted update all
+uv run --script scripts/selfhosted.py update grocy
+uv run --script scripts/selfhosted.py update all
 ```
 
 Deployment creates missing env files from `*.example.env` with mode `0600`. It stops if an app env still contains `CHANGE_ME`; edit files under `~/selfhosted/services/<name>/`, then rerun. Existing env files are never overwritten. Edit generated `~/selfhosted/gateway/caddy.env` before public use. Disable creates a runtime `.disabled` marker; `deploy all` and `update all` skip marked apps, while explicit `deploy app <name>` re-enables one.
 
 ## GitHub Actions Deployment
 
-Workflow syncs repository files over SSH, includes safe `*.example.env` templates, excludes runtime `*.env`, then runs `scripts/selfhosted`. Pushes to `main` deploy all with production gateway. Manual workflow runs can deploy, update, or disable one target.
+Workflow syncs repository files over SSH, includes safe `*.example.env` templates, excludes runtime `*.env`, then runs `uv run --script scripts/selfhosted.py`. Pushes to `main` deploy all with production gateway. Manual workflow runs can deploy, update, or disable one target.
 
 1. Create a dedicated key:
 

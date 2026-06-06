@@ -29,9 +29,9 @@ BOOKSTACK_SITE_ADDRESS=http://bookstack.localhost:80
 ## Commands
 
 ```sh
-scripts/selfhosted deploy gateway local
-scripts/selfhosted deploy gateway production
-scripts/selfhosted update gateway
+uv run --script scripts/selfhosted.py deploy gateway local
+uv run --script scripts/selfhosted.py deploy gateway production
+uv run --script scripts/selfhosted.py update gateway
 ```
 
 Add route hostname to deployed `~/selfhosted/gateway/caddy.env`, then redeploy gateway. See `docs/operations.md` for manual install, validation, and troubleshooting.
