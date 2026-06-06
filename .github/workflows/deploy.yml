@@ -1,0 +1,101 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Operation
+        type: choice
+        options: [deploy, update, disable]
+        default: deploy
+      target:
+        description: App name, gateway, or all
+        type: string
+        default: all
+      gateway_profile:
+        description: Gateway profile used by deploy
+        type: choice
+        options: [production, local]
+        default: production
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      - name: Sync repository
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+          USER: ${{ secrets.VPS_USER }}
+          DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH || 'selfhosted-infra' }}
+        run: |
+          [[ "$USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          [[ "$PORT" =~ ^[0-9]+$ ]]
+          [[ "$DEPLOY_PATH" =~ ^[A-Za-z0-9_./-]+$ ]]
+          rsync -az --exclude '.git/' --include '*.example.env' --exclude '*.env' \
+            -e "ssh -i ~/.ssh/deploy_key -p $PORT" \
+            ./ "$USER@$HOST:$DEPLOY_PATH/"
+
+      - name: Run deployment
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          PORT: ${{ secrets.VPS_PORT || '22' }}
+          USER: ${{ secrets.VPS_USER }}
+          DEPLOY_PATH: ${{ vars.VPS_DEPLOY_PATH || 'selfhosted-infra' }}
+          EVENT: ${{ github.event_name }}
+          OPERATION: ${{ inputs.operation || 'deploy' }}
+          TARGET: ${{ inputs.target || 'all' }}
+          PROFILE: ${{ inputs.gateway_profile || 'production' }}
+        run: |
+          [[ "$USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          [[ "$PORT" =~ ^[0-9]+$ ]]
+          [[ "$DEPLOY_PATH" =~ ^[A-Za-z0-9_./-]+$ ]]
+          [[ "$TARGET" =~ ^[a-z0-9-]+$ ]]
+          [[ "$PROFILE" == "production" || "$PROFILE" == "local" ]]
+
+          if [[ "$EVENT" == "push" ]]; then
+            OPERATION=deploy
+            TARGET=all
+            PROFILE=production
+          fi
+
+          case "$OPERATION:$TARGET" in
+            deploy:all|deploy:gateway)
+              COMMAND="deploy $TARGET $PROFILE"
+              ;;
+            deploy:*)
+              COMMAND="deploy app $TARGET"
+              ;;
+            update:*|disable:*)
+              COMMAND="$OPERATION $TARGET"
+              ;;
+            *)
+              echo "Unsupported operation: $OPERATION $TARGET" >&2
+              exit 1
+              ;;
+          esac
+
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" \
+            "cd '$DEPLOY_PATH' && bash scripts/selfhosted $COMMAND"

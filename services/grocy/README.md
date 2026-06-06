@@ -1,71 +1,41 @@
 # Grocy
 
-Grocy is a household inventory and recipe management app.
-
-This service uses the LinuxServer.io Grocy image and is exposed through the shared Caddy gateway.
+LinuxServer.io Grocy household inventory app. Use root [README](../../README.md) and [operations docs](../../docs/operations.md).
 
 ## Files
 
-- `quadlet/grocy.container`: production Podman Quadlet.
-- `grocy.env.example`: environment template.
-- `config/`: persistent Grocy app data.
-- `../../gateway/conf.d/grocy.caddy`: Caddy reverse-proxy route.
+- `quadlet/grocy.container`: app container.
+- `grocy.env.example`: `PUID`, `PGID`, and `TZ` defaults.
+- `config/`: persistent Grocy application data.
+- `../../gateway/conf.d/grocy.caddy`: public route.
+
+## Example Lines
+
+```sh
+PUID=1000
+PGID=1000
+TZ=Etc/UTC
+GROCY_SITE_ADDRESS=grocy.example.com
+```
+
+```caddyfile
+{$GROCY_SITE_ADDRESS:http://grocy.localhost:80} {
+	reverse_proxy grocy:80
+}
+```
 
 ## Deploy
 
-From the repository root on the server:
+Review generated `~/selfhosted/services/grocy/grocy.env` for `PUID`, `PGID`, and `TZ`. Set `GROCY_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`.
 
 ```sh
-mkdir -p ~/selfhosted/services/grocy
-cp -a services/grocy/config ~/selfhosted/services/grocy/
-cp services/grocy/grocy.env.example ~/selfhosted/services/grocy/grocy.env
+scripts/selfhosted deploy app grocy
+scripts/selfhosted update grocy
+scripts/selfhosted disable grocy
 ```
 
-Edit user/group IDs and timezone if needed:
+## Notes
 
-```sh
-nano ~/selfhosted/services/grocy/grocy.env
-```
-
-Install the Quadlet:
-
-```sh
-mkdir -p ~/.config/containers/systemd
-cp services/grocy/quadlet/grocy.container ~/.config/containers/systemd/
-systemctl --user daemon-reload
-systemctl --user start grocy.service
-```
-
-Do not run `systemctl --user enable grocy.service`; Quadlet services are generated. Autostart is controlled by `[Install] WantedBy=default.target` in `grocy.container`.
-
-Make sure the gateway has `gateway/conf.d/grocy.caddy` deployed and that `GROCY_SITE_ADDRESS` is set in `~/selfhosted/gateway/caddy.env`.
-
-Restart Caddy after adding the route:
-
-```sh
-systemctl --user restart caddy-static.service
-```
-
-## Test
-
-Local Quadlet gateway:
-
-```sh
-curl -I -H 'Host: grocy.localhost' http://127.0.0.1:8080
-```
-
-Production:
-
-```sh
-curl -I https://grocy.myhostname.com
-```
-
-## Data
-
-Grocy state is stored in:
-
-```text
-~/selfhosted/services/grocy/config
-```
-
-Back up this directory before upgrades or server migrations.
+- `config/` is the only persistent app data path.
+- `grocy.env.example` is the only service env template.
+- Backups and troubleshooting live in `docs/operations.md`.

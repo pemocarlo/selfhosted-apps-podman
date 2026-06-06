@@ -1,88 +1,51 @@
 # Hello App
 
-Deployment definition for the Hello App images built by the sibling `../hello-app` development repository.
+Example frontend/API deployment. Application source and image builds live in a separate repository. Use root [README](../../README.md) and [operations docs](../../docs/operations.md).
 
-This infrastructure repo does not contain the application source. It only contains the Podman Quadlets and Caddy routes needed to run the already-built images.
+## Files
+
+- `quadlet/hello-api.container`: API container.
+- `quadlet/hello-web.container`: frontend container.
+- `../../gateway/conf.d/hello-api.caddy`: optional direct API hostname.
+- `../../gateway/conf.d/hello-web.caddy`: frontend hostname and `/api/*` proxy.
+
+## Example Lines
+
+```sh
+HELLO_WEB_SITE_ADDRESS=myapp.example.com
+HELLO_API_SITE_ADDRESS=api.example.com
+```
+
+```caddyfile
+{$HELLO_WEB_SITE_ADDRESS:http://myapp.localhost:80} {
+	handle /api/* {
+		reverse_proxy hello-api:8000
+	}
+	handle {
+		reverse_proxy hello-web:8080
+	}
+}
+```
 
 ## Images
 
-Default image names used by these Quadlets:
+Current Quadlets use local images:
 
 - `localhost/hello-api:latest`
 - `localhost/hello-web:latest`
 
-For a real production registry, edit the `Image=` lines in:
+Build them on VPS before deploy, or change `Image=` to registry references and `AutoUpdate=registry`.
 
-- `quadlet/hello-api.container`
-- `quadlet/hello-web.container`
-
-If you use registry images, change `AutoUpdate=local` to `AutoUpdate=registry`.
-
-## Caddy Routes
-
-Gateway routes live outside this service directory:
-
-- `../../gateway/conf.d/hello-api.caddy`: optional direct API hostname, for example `api.myhostname.com`.
-- `../../gateway/conf.d/hello-web.caddy`: frontend hostname, for example `myapp.myhostname.com`, with `/api/*` proxied to `hello-api`.
-
-For most browser usage, expose only `HELLO_WEB_SITE_ADDRESS` publicly and let `/api/*` route through the frontend hostname.
-
-## Deploy
-
-Build or pull the images first. From the sibling `../hello-app` development repo, local builds are:
+## Commands
 
 ```sh
-podman build -t localhost/hello-api:latest -f api/Containerfile api
-podman build -t localhost/hello-web:latest -f web/Containerfile web
+scripts/selfhosted deploy app hello-app
+scripts/selfhosted update hello-app
+scripts/selfhosted disable hello-app
 ```
 
-Then install the Quadlets from this infrastructure repo:
+## Notes
 
-```sh
-mkdir -p ~/.config/containers/systemd
-cp services/hello-app/quadlet/hello-api.container ~/.config/containers/systemd/
-cp services/hello-app/quadlet/hello-web.container ~/.config/containers/systemd/
-systemctl --user daemon-reload
-systemctl --user start hello-api.service hello-web.service
-systemctl --user enable hello-api.service hello-web.service
-systemctl --user restart caddy-static.service
-```
-
-## Test
-
-Local gateway:
-
-```sh
-curl -i -H 'Host: myapp.localhost' http://127.0.0.1:8080
-curl -i -H 'Host: myapp.localhost' http://127.0.0.1:8080/api/hello
-```
-
-Production:
-
-```sh
-curl -I https://myapp.myhostname.com
-curl -i https://myapp.myhostname.com/api/hello
-```
-
-## Update
-
-Build or pull newer images, then restart the services:
-
-```sh
-systemctl --user restart hello-api.service hello-web.service
-```
-
-If Caddy routes changed, restart the gateway too:
-
-```sh
-systemctl --user restart caddy-static.service
-```
-
-## Logs
-
-```sh
-journalctl --user -u hello-api.service -f
-journalctl --user -u hello-web.service -f
-podman logs hello-api
-podman logs hello-web
-```
+- `hello-web` proxies `/api/*` to `hello-api`.
+- Set `HELLO_WEB_SITE_ADDRESS` and optional `HELLO_API_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`.
+- Service-specific test commands live in `docs/operations.md`.

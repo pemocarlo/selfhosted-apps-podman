@@ -1,120 +1,52 @@
 # BookStack
 
-BookStack is a documentation/wiki application. This service uses the community `solidnerd/bookstack` image with a MySQL container and exposes BookStack through the shared Caddy gateway.
+BookStack wiki plus private MySQL container. Use root [README](../../README.md) and [operations docs](../../docs/operations.md).
 
 ## Files
 
-- `quadlet/bookstack.container`: BookStack application container.
-- `quadlet/bookstack-db.container`: MySQL database container.
-- `quadlet/bookstack-internal.network`: private app-to-database network.
-- `bookstack.env.example`: BookStack environment template.
-- `bookstack-db.env.example`: database environment template.
-- `mysql/`: persistent MySQL data.
-- `public-uploads/`: persistent public uploads.
-- `storage-uploads/`: persistent private uploads.
-- `../../gateway/conf.d/bookstack.caddy`: public Caddy route.
+- `quadlet/bookstack.container`: app container.
+- `quadlet/bookstack-db.container`: MySQL container.
+- `quadlet/bookstack-internal.network`: private app-to-db network.
+- `bookstack.env.example`: app settings, URL, and secret placeholders.
+- `bookstack-db.env.example`: database name and credentials.
+- `mysql/`: persistent database data.
+- `public-uploads/`: public uploads.
+- `storage-uploads/`: private uploads.
+- `../../gateway/conf.d/bookstack.caddy`: public route.
 
-## Prepare Runtime Files
-
-From the infrastructure repo root:
+## Example Lines
 
 ```sh
-mkdir -p ~/selfhosted/services/bookstack
-cp -a services/bookstack/mysql services/bookstack/public-uploads services/bookstack/storage-uploads ~/selfhosted/services/bookstack/
-cp services/bookstack/bookstack.env.example ~/selfhosted/services/bookstack/bookstack.env
-cp services/bookstack/bookstack-db.env.example ~/selfhosted/services/bookstack/bookstack-db.env
+APP_URL=https://bookstack.example.com
+DB_PASSWORD=CHANGE_ME_DATABASE_PASSWORD
+MYSQL_PASSWORD=CHANGE_ME_DATABASE_PASSWORD
+BOOKSTACK_SITE_ADDRESS=bookstack.example.com
 ```
 
-Edit secrets and the public URL:
-
-```sh
-nano ~/selfhosted/services/bookstack/bookstack.env
-nano ~/selfhosted/services/bookstack/bookstack-db.env
-```
-
-Use the same database password in `DB_PASSWORD` and `MYSQL_PASSWORD`.
-
-Generate a unique `APP_KEY` before production use:
-
-```sh
-openssl rand -base64 32
-```
-
-Set `APP_URL` to the URL users will open, without a trailing slash:
-
-```sh
-APP_URL=https://bookstack.myhostname.com
-```
-
-## Gateway
-
-Set `BOOKSTACK_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`:
-
-```sh
-BOOKSTACK_SITE_ADDRESS=bookstack.myhostname.com
-```
-
-For local gateway testing:
-
-```sh
-BOOKSTACK_SITE_ADDRESS=http://bookstack.localhost:80
+```caddyfile
+{$BOOKSTACK_SITE_ADDRESS:http://bookstack.localhost:80} {
+	reverse_proxy bookstack:8080
+}
 ```
 
 ## Deploy
 
-Install the Quadlets:
+Before deploy, set matching `DB_PASSWORD` and `MYSQL_PASSWORD`, unique `APP_KEY`, and exact public `APP_URL` in generated runtime env files. `scripts/selfhosted deploy app bookstack` creates missing env files, then stops if placeholders remain.
 
 ```sh
-mkdir -p ~/.config/containers/systemd
-cp services/bookstack/quadlet/bookstack-internal.network ~/.config/containers/systemd/
-cp services/bookstack/quadlet/bookstack-db.container ~/.config/containers/systemd/
-cp services/bookstack/quadlet/bookstack.container ~/.config/containers/systemd/
-systemctl --user daemon-reload
-systemctl --user start bookstack-db.service bookstack.service
-systemctl --user restart caddy-static.service
+openssl rand -base64 32
+nano ~/selfhosted/services/bookstack/bookstack.env
+nano ~/selfhosted/services/bookstack/bookstack-db.env
+scripts/selfhosted deploy app bookstack
 ```
 
-Do not run `systemctl --user enable bookstack.service`. Quadlet services are generated; autostart is controlled by the `[Install]` section in the `.container` files and applied by the generator.
+Set `BOOKSTACK_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`. Change default login `admin@admin.com / password` immediately.
 
-## Test
+## Notes
 
-Local gateway:
-
-```sh
-curl -I -H 'Host: bookstack.localhost' http://127.0.0.1:8080
-```
-
-Production:
-
-```sh
-curl -I https://bookstack.myhostname.com
-```
-
-Default initial login is usually:
-
-```text
-admin@admin.com / password
-```
-
-Change it immediately after first login.
-
-## Logs
-
-```sh
-journalctl --user -u bookstack.service -f
-journalctl --user -u bookstack-db.service -f
-podman logs bookstack
-podman logs bookstack-db
-```
-
-## Backup
-
-Back up these runtime paths:
-
-- `~/selfhosted/services/bookstack/mysql`
-- `~/selfhosted/services/bookstack/public-uploads`
-- `~/selfhosted/services/bookstack/storage-uploads`
-- `~/selfhosted/services/bookstack/bookstack.env`
-- `~/selfhosted/services/bookstack/bookstack-db.env`
-
-Take database backups before upgrades or migrations.
+- `bookstack.container` depends on `bookstack-db.container`.
+- `bookstack-internal.network` keeps database traffic private.
+- `bookstack-db.env.example` holds DB name and password vars.
+- `bookstack.env.example` holds app URL, app key, and DB host/user vars.
+- `mysql/`, `public-uploads/`, and `storage-uploads/` are persistent data paths.
+- Backups, checks, and manual install live in `docs/operations.md`.

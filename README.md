@@ -1,295 +1,88 @@
-# Selfhosted Apps With Podman Quadlets
+# Self-hosted Apps with Podman Quadlets
 
-Infrastructure repository for self-hosted services managed with rootless Podman, systemd Quadlets, and a shared Caddy gateway.
+Rootless Podman Quadlets run independent apps behind one Caddy gateway. Application source and image builds belong in separate repositories.
 
-This repository contains deployment definitions, Caddy routes, runtime directory templates, and operational documentation. Application source code belongs in separate development repositories that publish container images.
+## Layout
 
-## Repository Model
+- `gateway/`: shared Caddy gateway, public network, routes, and static landing page.
+- `services/<name>/`: one independently deployable app or app group.
+- `scripts/selfhosted`: canonical deploy, disable, update, and status commands.
+- `.github/workflows/deploy.yml`: SSH deployment from GitHub Actions.
+- `docs/operations.md`: manual install, troubleshooting, and maintenance.
 
-- `gateway/`: shared Caddy reverse proxy, automatic TLS, static landing page, and shared Podman network.
-- `services/`: one directory per deployed service or app group.
-- `services/<name>/README.md`: concrete deployment, update, backup, and testing steps for that service.
-
-The root README stays general. Use the service READMEs for image names, environment files, persistent paths, and service-specific commands.
-
-## Runtime Layout
-
-Runtime files are copied under the user home directory:
+Runtime configuration and data live outside Git:
 
 ```text
 ~/selfhosted/
-  gateway/
-    Caddyfile
-    caddy.env
-    conf.d/
-    data/
-    config/
-  services/
-    <service>/
-      *.env
-      config/
-```
-
-Quadlet source files are installed under:
-
-```text
+  gateway/{caddy.env,data,config,...}
+  services/<name>/{*.env,data-directories...}
 ~/.config/containers/systemd/
 ```
 
-## Initial Server Setup
+Real `*.env` files are ignored. Commit only sanitized `*.example.env` templates.
 
-Install Podman with Quadlet support and verify user systemd works:
+## Automated Operations
 
-```sh
-podman --version
-systemctl --user status
-```
-
-Keep user services running after logout:
+Run from repository root on the VPS:
 
 ```sh
-loginctl enable-linger "$USER"
+# First deploy.
+scripts/selfhosted deploy gateway production
+scripts/selfhosted deploy app grocy
+scripts/selfhosted deploy all production
+
+# Independent lifecycle. Disable persists across deploy/update all.
+scripts/selfhosted disable grocy
+scripts/selfhosted deploy app grocy
+scripts/selfhosted status grocy
+
+# Pull configured registry images and restart only selected component.
+scripts/selfhosted update grocy
+scripts/selfhosted update all
 ```
 
-Create the runtime root:
+Deployment creates missing env files from `*.example.env` with mode `0600`. It stops if an app env still contains `CHANGE_ME`; edit files under `~/selfhosted/services/<name>/`, then rerun. Existing env files are never overwritten. Edit generated `~/selfhosted/gateway/caddy.env` before public use. Disable creates a runtime `.disabled` marker; `deploy all` and `update all` skip marked apps, while explicit `deploy app <name>` re-enables one.
+
+## GitHub Actions Deployment
+
+Workflow syncs repository files over SSH, includes safe `*.example.env` templates, excludes runtime `*.env`, then runs `scripts/selfhosted`. Pushes to `main` deploy all with production gateway. Manual workflow runs can deploy, update, or disable one target.
+
+1. Create a dedicated key:
 
 ```sh
-mkdir -p ~/selfhosted
+ssh-keygen -t ed25519 -f ~/.ssh/github-actions-vps -C github-actions-vps
 ```
 
-## Gateway First
-
-Deploy the gateway before app services. The gateway creates the shared `caddy-public` network and owns all public ports.
-
-See `gateway/README.md` for gateway setup.
-
-## Service Configuration
-
-Each service should keep examples in git and real runtime configuration under `~/selfhosted`.
-
-- Commit `*.env.example` files with safe placeholders.
-- Copy examples to `~/selfhosted/services/<name>/*.env` during deployment.
-- Never commit real passwords, app keys, API tokens, or database credentials.
-- Keep persistent data templates in service directories with `.gitkeep` files.
-- Put public hostnames in `~/selfhosted/gateway/caddy.env`.
-
-## Add A Service
-
-Each service should include:
-
-- `services/<name>/README.md`
-- `services/<name>/quadlet/*.container`
-- `services/<name>/*.env.example` if environment variables are needed
-- `services/<name>/config/.gitkeep` or other persistent directory templates if needed
-- One or more Caddy routes in `gateway/conf.d/*.caddy`
-
-Generic deployment flow:
+2. Add `~/.ssh/github-actions-vps.pub` to deployment user's `~/.ssh/authorized_keys` on VPS. Verify that user can run `systemctl --user`, Podman, and `loginctl enable-linger`.
+3. Capture host key from a trusted connection:
 
 ```sh
-cp services/<name>/quadlet/*.container ~/.config/containers/systemd/
-systemctl --user daemon-reload
-systemctl --user start <service>.service
-systemctl --user restart caddy-static.service
+ssh-keyscan -H your-vps.example.com
 ```
 
-For app services built elsewhere, update the Quadlet `Image=` line to point at the image produced by that app's development repo or registry.
+4. In GitHub repository `Settings > Secrets and variables > Actions`, add:
 
-## Add A Route
+| Type     | Name              | Value                                            |
+| -------- | ----------------- | ------------------------------------------------ |
+| Secret   | `VPS_HOST`        | VPS hostname or IP                               |
+| Secret   | `VPS_USER`        | rootless deployment user                         |
+| Secret   | `VPS_PORT`        | SSH port, usually `22`                           |
+| Secret   | `VPS_SSH_KEY`     | private key contents                             |
+| Secret   | `VPS_KNOWN_HOSTS` | trusted `ssh-keyscan` output                     |
+| Variable | `VPS_DEPLOY_PATH` | repository sync path, default `selfhosted-infra` |
 
-Prefer hostname environment variables in Caddy routes so local and production hostnames can differ without editing route files.
-
-1. Add a variable to `gateway/caddy.env.example`:
-
-```sh
-MY_SERVICE_SITE_ADDRESS=http://my-service.localhost:80
-# MY_SERVICE_SITE_ADDRESS=my-service.myhostname.com
-```
-
-2. Add the same variable to the deployed `~/selfhosted/gateway/caddy.env`.
-
-3. Add a route such as `gateway/conf.d/my-service.caddy`:
-
-```caddyfile
-{$MY_SERVICE_SITE_ADDRESS:http://my-service.localhost:80} {
-	encode zstd gzip
-	reverse_proxy my-service:3000
-}
-```
-
-4. Restart Caddy:
-
-```sh
-systemctl --user restart caddy-static.service
-```
-
-The fallback inside `{...}` is useful for local testing. Production should set the environment variable explicitly in `gateway/caddy.env`.
-
-## Quadlet Autostart
-
-Do not use `systemctl --user enable <generated>.service` for Quadlet-generated services. On many systems this fails with an error like:
-
-```text
-Unit ... is transient or generated
-```
-
-This is expected. Podman Quadlet services are generated by systemd, and the generator applies the `[Install]` section from the source `.container`, `.network`, or related Quadlet file.
-
-For autostart:
-
-- Keep the Quadlet source file in `~/.config/containers/systemd/`.
-- Include `[Install]` with `WantedBy=default.target` in the Quadlet file.
-- Run `systemctl --user daemon-reload` after installing or changing Quadlets.
-- Run `loginctl enable-linger "$USER"` if services must start without an active login session.
-- Use `systemctl --user start <name>.service` only to start it immediately.
-
-## Ports And TLS
-
-For normal public Caddy usage, open:
-
-- TCP `80` for ACME HTTP-01 certificate challenges and HTTP-to-HTTPS redirects.
-- TCP `443` for HTTPS.
-- UDP `443` for HTTP/3, optional.
-
-Port `80` is not strictly required, but avoiding it requires a different certificate strategy such as TLS-ALPN-01 on `443` or DNS-01 with a custom Caddy DNS provider build.
-
-For rootless Podman low ports:
-
-```sh
-sudo sysctl net.ipv4.ip_unprivileged_port_start=80
-printf 'net.ipv4.ip_unprivileged_port_start=80\n' | sudo tee /etc/sysctl.d/99-rootless-podman-low-ports.conf
-sudo sysctl --system
-```
-
-If using firewalld:
-
-```sh
-sudo firewall-cmd --add-service=http --add-service=https --permanent
-sudo firewall-cmd --reload
-```
-
-## Maintenance
-
-List service state:
-
-```sh
-systemctl --user list-units
-podman ps
-```
-
-Reload Quadlets after changing source files:
-
-```sh
-systemctl --user daemon-reload
-```
-
-Restart the gateway after changing `gateway/Caddyfile`, `gateway/conf.d/*.caddy`, or `gateway/caddy.env`:
-
-```sh
-systemctl --user restart caddy-static.service
-```
-
-Restart one service after changing its image or environment:
-
-```sh
-systemctl --user restart <service>.service
-```
-
-Pull image updates manually when not relying on auto-update:
-
-```sh
-podman pull <image>
-systemctl --user restart <service>.service
-```
-
-Inspect image and container metadata:
-
-```sh
-podman images
-podman inspect <container>
-```
-
-## Logging
-
-Systemd service logs:
-
-```sh
-journalctl --user -u caddy-static.service -f
-journalctl --user -u <service>.service -f
-```
-
-Container logs:
-
-```sh
-podman logs caddy-static
-podman logs <container>
-```
-
-Recent boot logs for all user services:
-
-```sh
-journalctl --user -b
-```
-
-Show failed user units:
-
-```sh
-systemctl --user --failed
-```
-
-## Debugging
-
-Check generated Quadlet units:
-
-```sh
-systemctl --user cat <service>.service
-```
-
-Validate Caddy config from this repo:
-
-```sh
-podman run --rm \
-  --env-file "$PWD/gateway/caddy.env.example" \
-  -v "$PWD/gateway/Caddyfile:/etc/caddy/Caddyfile:ro,Z" \
-  -v "$PWD/gateway/conf.d:/etc/caddy/conf.d:ro,Z" \
-  docker.io/library/caddy:2-alpine \
-  caddy validate --config /etc/caddy/Caddyfile
-```
-
-Validate Quadlet generation for a service directory:
-
-```sh
-QUADLET_UNIT_DIRS="$PWD/services/<name>/quadlet" /usr/lib/systemd/system-generators/podman-system-generator --user --dryrun
-```
-
-If a service depends on shared Quadlets such as `caddy-public.network`, include those files in a temporary validation directory too.
-
-Check the shared network:
-
-```sh
-podman network inspect caddy-public
-```
-
-Test local gateway routing with host headers:
-
-```sh
-curl -i -H 'Host: my-service.localhost' http://127.0.0.1:8080
-```
-
-Common failure checks:
-
-- DNS points each public hostname at the server.
-- Firewall allows public ports `80` and `443`.
-- No other process owns ports `80` or `443`.
-- Containers are attached to the expected Podman networks.
-- Caddy route upstream names match container names.
-- Runtime files exist under `~/selfhosted/...` paths referenced by Quadlets.
-- The server clock is correct for TLS certificate validation.
+5. Before first CI deploy, run deployment once on VPS, edit generated env files, and rerun. GitHub Actions cannot and should not upload secrets from this repository.
+6. Protect the GitHub `production` environment if deployments require approval.
 
 ## Backups
 
-Back up persistent runtime data, not generated containers:
+Back up runtime data, not generated containers:
 
-- `~/selfhosted/gateway/data`
-- `~/selfhosted/gateway/config`
-- `~/selfhosted/services/*/config`
-- Any service-specific database or upload directories documented in `services/<name>/README.md`
+- `~/selfhosted/gateway/data` and `~/selfhosted/gateway/config`
+- `~/selfhosted/services/*/` including env files and app data
+
+Test restoration. Database-backed apps need consistent database backups before upgrades.
+
+## Add an App
+
+Add `services/<name>/quadlet/`, safe `*.example.env` templates, persistent-directory `.gitkeep` files, a route in `gateway/conf.d/`, and a short service README containing only app-specific settings, tests, and backup paths.
