@@ -5,7 +5,7 @@ Shared Caddy edge service. Deploy and operate it using root [README](../README.m
 ## Files
 
 - `Caddyfile`: base config and drop-in import.
-- `caddy.env.example`: local hostname defaults and production examples.
+- `caddy.example.env`: local hostname defaults and production examples.
 - `conf.d/*.caddy`: app routes.
 - `quadlet/caddy-local.container`: local gateway on `127.0.0.1:8080`.
 - `quadlet/caddy-production.container`: production gateway on ports `80` and `443`.

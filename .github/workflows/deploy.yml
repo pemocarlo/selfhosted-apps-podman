@@ -54,7 +54,7 @@ jobs:
           [[ "$USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
           [[ "$PORT" =~ ^[0-9]+$ ]]
           [[ "$DEPLOY_PATH" =~ ^[A-Za-z0-9_./-]+$ ]]
-          rsync -az --exclude '.git/' --include '*.example.env' --exclude '*.env' \
+          rsync -az --delete-delay --exclude '.git/' --include '*.example.env' --exclude '*.env' \
             -e "ssh -i ~/.ssh/deploy_key -p $PORT" \
             ./ "$USER@$HOST:$DEPLOY_PATH/"
 
@@ -86,10 +86,17 @@ jobs:
               COMMAND="deploy $TARGET $PROFILE"
               ;;
             deploy:*)
-              COMMAND="deploy app $TARGET"
+              COMMAND="deploy $TARGET"
               ;;
-            update:*|disable:*)
+            update:*)
               COMMAND="$OPERATION $TARGET"
+              ;;
+            disable:all|disable:gateway)
+              echo "Disable requires one app name" >&2
+              exit 1
+              ;;
+            disable:*)
+              COMMAND="disable $TARGET"
               ;;
             *)
               echo "Unsupported operation: $OPERATION $TARGET" >&2

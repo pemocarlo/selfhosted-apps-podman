@@ -1,0 +1,18 @@
+[Unit]
+Description=Artifactory CE for C/C++
+
+[Container]
+Image=releases-docker.jfrog.io/jfrog/artifactory-cpp-ce:latest
+ContainerName=artifactory
+Network=caddy-public.network
+EnvironmentFile=%h/selfhosted/services/artifactory/artifactory.env
+Volume=%h/selfhosted/services/artifactory/var:/var/opt/jfrog/artifactory:Z,U
+AutoUpdate=registry
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target

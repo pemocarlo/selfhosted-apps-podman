@@ -39,7 +39,7 @@ Build them on VPS before deploy, or change `Image=` to registry references and `
 ## Commands
 
 ```sh
-scripts/selfhosted deploy app hello-app
+scripts/selfhosted deploy hello-app
 scripts/selfhosted update hello-app
 scripts/selfhosted disable hello-app
 ```

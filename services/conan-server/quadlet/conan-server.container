@@ -1,0 +1,19 @@
+[Unit]
+Description=Conan package server
+
+[Container]
+Image=localhost/conan-server:2.30.0
+ContainerName=conan-server
+Network=caddy-public.network
+Environment=CONAN_SERVER_HOME=/var/lib/conan-server
+Volume=%h/selfhosted/services/conan-server/server.conf:/var/lib/conan-server/server.conf:Z,ro
+Volume=%h/selfhosted/services/conan-server/data:/var/lib/conan-server/data:Z
+AutoUpdate=local
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target

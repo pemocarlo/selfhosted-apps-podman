@@ -44,6 +44,18 @@ scripts/selfhosted update all
 
 Updates pull registry images and restart only the selected component. Pinned tags change only when the Quadlet changes; floating tags may introduce breaking changes. Back up before upgrades.
 
+To apply repository definition or documentation changes, update the checkout separately and deploy the affected component:
+
+```sh
+git pull --ff-only
+scripts/selfhosted check
+scripts/selfhosted deploy <name>
+# Or apply the gateway plus every already-installed app:
+scripts/selfhosted deploy all production
+```
+
+`update` means “pull container images”; it does not run `git pull`. Deploy records which Quadlet and gateway configuration files it manages, so a later deploy or disable can remove obsolete definitions without touching manually added files or runtime data.
+
 Quadlets contain `AutoUpdate=`, but automatic updates are not enabled by this repository. If you intentionally want unattended updates, enable the user timer with `systemctl --user enable --now podman-auto-update.timer` only after establishing tested backups and rollback procedures.
 
 ## Backups

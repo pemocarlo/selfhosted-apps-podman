@@ -10,6 +10,7 @@ __pycache__/
 # Never commit runtime secrets. Keep only sanitized templates.
 .env
 *.env
+!*.example.env
 
 # Keep persistent directories, but do not commit live runtime state.
 gateway/data/*
@@ -24,3 +25,7 @@ services/*/public-uploads/*
 !services/*/public-uploads/.gitkeep
 services/*/storage-uploads/*
 !services/*/storage-uploads/.gitkeep
+services/*/data/*
+!services/*/data/.gitkeep
+services/*/var/*
+!services/*/var/.gitkeep

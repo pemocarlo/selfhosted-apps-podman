@@ -1,0 +1,4 @@
+{$ARTIFACTORY_SITE_ADDRESS:http://artifactory.localhost:80} {
+	encode zstd gzip
+	reverse_proxy artifactory:8082
+}

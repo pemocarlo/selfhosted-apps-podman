@@ -1,0 +1,4 @@
+{$CONAN_SERVER_SITE_ADDRESS:http://conan.localhost:80} {
+	encode zstd gzip
+	reverse_proxy conan-server:9300
+}

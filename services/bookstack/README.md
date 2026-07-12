@@ -7,8 +7,8 @@ BookStack wiki plus private MySQL container. Use root [README](../../README.md) 
 - `quadlet/bookstack.container`: app container.
 - `quadlet/bookstack-db.container`: MySQL container.
 - `quadlet/bookstack-internal.network`: private app-to-db network.
-- `bookstack.env.example`: app settings, URL, and secret placeholders.
-- `bookstack-db.env.example`: database name and credentials.
+- `bookstack.example.env`: app settings, URL, and secret placeholders.
+- `bookstack-db.example.env`: database name and credentials.
 - `mysql/`: persistent database data.
 - `public-uploads/`: public uploads.
 - `storage-uploads/`: private uploads.
@@ -31,13 +31,13 @@ BOOKSTACK_SITE_ADDRESS=bookstack.example.com
 
 ## Deploy
 
-Before deploy, set matching `DB_PASSWORD` and `MYSQL_PASSWORD`, a unique `APP_KEY`, and the exact public `APP_URL` in generated runtime env files. `scripts/selfhosted deploy app bookstack` creates missing env files, then stops if placeholders remain.
+Before deploy, set matching `DB_PASSWORD` and `MYSQL_PASSWORD`, a unique `APP_KEY`, and the exact public `APP_URL` in generated runtime env files. `scripts/selfhosted deploy bookstack` creates missing env files, then stops if placeholders remain.
 
 ```sh
 openssl rand -base64 32
 nano ~/selfhosted/services/bookstack/bookstack.env
 nano ~/selfhosted/services/bookstack/bookstack-db.env
-scripts/selfhosted deploy app bookstack
+scripts/selfhosted deploy bookstack
 ```
 
 Set `BOOKSTACK_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`. Change default login `admin@admin.com / password` immediately.
@@ -46,7 +46,7 @@ Set `BOOKSTACK_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`. Change default
 
 - `bookstack.container` depends on `bookstack-db.container`.
 - `bookstack-internal.network` keeps database traffic private.
-- `bookstack-db.env.example` holds DB name and password vars.
-- `bookstack.env.example` holds app URL, app key, and DB host/user vars.
+- `bookstack-db.example.env` holds DB name and password vars.
+- `bookstack.example.env` holds app URL, app key, and DB host/user vars.
 - `mysql/`, `public-uploads/`, and `storage-uploads/` are persistent data paths.
 - Back up `mysql/`, `public-uploads/`, and `storage-uploads/` together while the app is stopped, or use a consistent MySQL dump.

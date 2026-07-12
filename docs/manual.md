@@ -12,7 +12,7 @@ install -m 0644 gateway/Caddyfile ~/selfhosted/gateway/Caddyfile
 cp -a gateway/conf.d/. ~/selfhosted/gateway/conf.d/
 cp -a gateway/site/. ~/selfhosted/gateway/site/
 test -e ~/selfhosted/gateway/caddy.env || \
-  install -m 0600 gateway/caddy.env.example ~/selfhosted/gateway/caddy.env
+  install -m 0600 gateway/caddy.example.env ~/selfhosted/gateway/caddy.env
 nano ~/selfhosted/gateway/caddy.env
 
 install -m 0644 gateway/quadlet/caddy-public.network ~/.config/containers/systemd/
@@ -39,7 +39,7 @@ Grocy example:
 ```sh
 install -d ~/selfhosted/services/grocy/config ~/.config/containers/systemd
 test -e ~/selfhosted/services/grocy/grocy.env || \
-  install -m 0600 services/grocy/grocy.env.example ~/selfhosted/services/grocy/grocy.env
+  install -m 0600 services/grocy/grocy.example.env ~/selfhosted/services/grocy/grocy.env
 install -m 0644 services/grocy/quadlet/* ~/.config/containers/systemd/
 systemctl --user daemon-reload
 systemctl --user restart grocy.service
