@@ -21,6 +21,18 @@ systemctl --user cat <name>.service
 
 Do not enable generated Quadlet services with `systemctl`; the generator applies their `[Install]` sections. `scripts/selfhosted disable <name>` removes definitions but preserves application data.
 
+Lifecycle commands affect only the selected app:
+
+```sh
+scripts/selfhosted add <name>       # first install
+scripts/selfhosted disable <name>   # temporary; deploy all keeps skipping it
+scripts/selfhosted enable <name>    # restore a disabled or removed app
+scripts/selfhosted remove <name>    # uninstall units; keep config and data
+scripts/selfhosted restart <name>   # no image pull
+```
+
+`remove` is intentionally non-destructive. Delete runtime data only through a deliberate, separately verified manual operation after testing a backup.
+
 ## Checks and troubleshooting
 
 ```sh

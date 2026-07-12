@@ -61,9 +61,13 @@ Each service README contains only its extra setup, data paths, and backup notes.
 ```sh
 scripts/selfhosted list                    # show available/installed/disabled apps
 scripts/selfhosted deploy <name>           # install or re-enable one app
+scripts/selfhosted add <name>              # explicit alias for first installation
+scripts/selfhosted enable <name>           # re-enable a disabled/removed app
+scripts/selfhosted restart <name|gateway>  # restart without pulling an image
 scripts/selfhosted update <name|gateway>   # pull and restart one component
 scripts/selfhosted update all              # update every enabled component
-scripts/selfhosted disable <name>           # stop app; preserve all data
+scripts/selfhosted disable <name>           # temporary stop; preserve all data
+scripts/selfhosted remove <name>            # uninstall units; preserve config/data
 scripts/selfhosted status [name|gateway|all]
 scripts/selfhosted logs <name|gateway>      # show the last 100 journal lines
 scripts/selfhosted logs <name> --follow     # follow live logs; stop with Ctrl-C
@@ -73,6 +77,8 @@ scripts/selfhosted check                    # validate the host and configuratio
 `deploy all [local|production]` deploys the gateway and previously installed apps. New and disabled apps require an explicit `deploy <name>`.
 
 `list` reports `available` (not installed), `configured` (runtime files exist but Quadlets are not installed), `installed`, `needs-deploy` (repository definitions changed), or `disabled`. A common `configured` state is the first deploy of an app with secret placeholders; edit the generated file and repeat the deploy. For `needs-deploy`, run `scripts/selfhosted deploy <name>`.
+
+`disable` remembers that an app must stay off, so `deploy all` skips it. `remove` forgets that disabled state and removes only its managed systemd/Podman definitions; its environment files and persistent directories remain in `~/selfhosted`. Use `enable <name>` or `deploy <name>` to bring either state back. There is deliberately no automatic data-deletion command.
 
 ## Where files live
 

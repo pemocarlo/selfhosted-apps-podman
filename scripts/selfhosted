@@ -20,8 +20,12 @@ Usage: scripts/selfhosted COMMAND [TARGET]
   deploy NAME                         install or re-deploy one app
   deploy app NAME                     same as "deploy NAME"
   deploy all [local|production]
+  add NAME                            install a new app
+  enable NAME                         re-enable a disabled/removed app
+  restart NAME|gateway|all            restart without pulling images
   update NAME|gateway|all
-  disable NAME
+  disable NAME                        temporarily stop; preserve data
+  remove NAME                         uninstall app units; preserve data
   status [NAME|gateway|all]
   logs NAME|gateway [--follow]
   list                                show available apps and their state
@@ -129,6 +133,15 @@ sync_managed_files() {
   mv -f "$pending" "$manifest"
 }
 
+install_seed_files() {
+  local source="$1" target="$2" path name
+  mkdir -p "$target"
+  while IFS= read -r -d '' path; do
+    name="$(basename "$path")"
+    [[ -e "$target/$name" ]] || cp -a "$path" "$target/$name"
+  done < <(find "$source" -mindepth 1 -maxdepth 1 ! -name .gitkeep -print0)
+}
+
 reject_placeholders() {
   grep -qs CHANGE_ME "$1"/*.env "$1"/*.conf 2>/dev/null &&
     die "replace CHANGE_ME in $1 configuration, then deploy again"
@@ -162,8 +175,7 @@ prepare_app() {
   install_templates "$source" "$target"
   for path in "$source"/*; do
     [[ -d "$path" && "$(basename "$path")" != quadlet ]] || continue
-    mkdir -p "$target/$(basename "$path")"
-    cp -a "$path/." "$target/$(basename "$path")/"
+    install_seed_files "$path" "$target/$(basename "$path")"
   done
   reject_placeholders "$target"
 }
@@ -277,22 +289,65 @@ update() {
   fi
 }
 
-disable() {
+uninstall_app() {
   local app="$1" source file name unit_list manifest
   source="$(app_source "$app")"
-  mkdir -p "$STATE/services/$app"
-  touch "$STATE/services/$app/.disabled"
   unit_list="$(units "$source")"
   [[ -z "$unit_list" ]] || systemctl --user stop $unit_list || true
-  for file in "$source"/quadlet/*; do rm -f "$QUADLETS/$(basename "$file")"; done
   manifest="$STATE/services/$app/.installed-quadlets"
   if [[ -f "$manifest" ]]; then
     while read -r name; do
-      [[ "$name" =~ ^[A-Za-z0-9_.@-]+$ ]] && rm -f "$QUADLETS/$name"
+      [[ "$name" =~ ^[A-Za-z0-9_.@-]+$ ]] || continue
+      if [[ "$name" == *.container ]]; then
+        systemctl --user stop "${name%.container}.service" || true
+      fi
+      rm -f "$QUADLETS/$name"
     done < "$manifest"
   fi
+  for file in "$source"/quadlet/*; do
+    [[ -f "$file" ]] && rm -f "$QUADLETS/$(basename "$file")"
+  done
   systemctl --user daemon-reload
+}
+
+disable() {
+  local app="$1"
+  app_source "$app" >/dev/null
+  mkdir -p "$STATE/services/$app"
+  touch "$STATE/services/$app/.disabled"
+  uninstall_app "$app"
   printf 'disabled %s; data preserved\n' "$app"
+}
+
+remove_app() {
+  local app="$1" manifest="$STATE/services/$1/.installed-quadlets"
+  app_source "$app" >/dev/null
+  uninstall_app "$app"
+  rm -f "$STATE/services/$app/.disabled" "$manifest" "$manifest.new"
+  printf 'removed %s service definitions; configuration and data preserved\n' "$app"
+}
+
+restart_target() {
+  local target="$1" app source unit_list
+  if [[ "$target" == all ]]; then
+    [[ ! -f "$QUADLETS/caddy-static.container" ]] || restart_target gateway
+    while read -r app; do
+      if app_fully_installed "$app" && [[ ! -e "$STATE/services/$app/.disabled" ]]; then
+        restart_target "$app"
+      fi
+    done < <(apps)
+  elif [[ "$target" == gateway ]]; then
+    [[ -f "$QUADLETS/caddy-static.container" ]] || die 'gateway is not installed'
+    systemctl --user restart caddy-static.service
+    printf 'restarted gateway\n'
+  else
+    source="$(app_source "$target")"
+    [[ ! -e "$STATE/services/$target/.disabled" ]] || die "$target is disabled"
+    app_fully_installed "$target" || die "$target is not fully installed; deploy it first"
+    unit_list="$(units "$source")"
+    [[ -z "$unit_list" ]] || systemctl --user restart $unit_list
+    printf 'restarted %s\n' "$target"
+  fi
 }
 
 status() {
@@ -340,9 +395,9 @@ check() {
 command="${1:-help}"
 case "$command" in
   help|-h|--help|list) ;;
-  deploy) require_commands podman systemctl install ;;
+  deploy|add|enable) require_commands podman systemctl install ;;
   update) require_commands podman systemctl ;;
-  disable|status) require_commands systemctl ;;
+  disable|remove|restart|status) require_commands systemctl ;;
   logs) require_commands journalctl ;;
   check) require_commands podman systemctl ;;
   *) usage; exit 1 ;;
@@ -358,7 +413,10 @@ case "$command" in
       *) [[ -z "${3:-}" ]] || die 'deploy NAME does not accept another argument'; deploy_app "$2" ;;
     esac ;;
   update) update "${2:-}" ;;
+  add|enable) deploy_app "${2:-}" ;;
+  restart) restart_target "${2:-}" ;;
   disable) disable "${2:-}" ;;
+  remove) remove_app "${2:-}" ;;
   status) status "${2:-all}" ;;
   logs) logs "${2:-}" "${3:-}" ;;
   list) list_apps ;;

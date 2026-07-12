@@ -8,7 +8,7 @@ on:
       operation:
         description: Operation
         type: choice
-        options: [deploy, update, disable]
+        options: [deploy, update, restart, enable, disable, remove]
         default: deploy
       target:
         description: App name, gateway, or all
@@ -88,15 +88,15 @@ jobs:
             deploy:*)
               COMMAND="deploy $TARGET"
               ;;
-            update:*)
+            update:*|restart:*)
               COMMAND="$OPERATION $TARGET"
               ;;
-            disable:all|disable:gateway)
-              echo "Disable requires one app name" >&2
+            enable:all|enable:gateway|disable:all|disable:gateway|remove:all|remove:gateway)
+              echo "$OPERATION requires one app name" >&2
               exit 1
               ;;
-            disable:*)
-              COMMAND="disable $TARGET"
+            enable:*|disable:*|remove:*)
+              COMMAND="$OPERATION $TARGET"
               ;;
             *)
               echo "Unsupported operation: $OPERATION $TARGET" >&2
