@@ -31,13 +31,13 @@ BOOKSTACK_SITE_ADDRESS=bookstack.example.com
 
 ## Deploy
 
-Before deploy, set matching `DB_PASSWORD` and `MYSQL_PASSWORD`, unique `APP_KEY`, and exact public `APP_URL` in generated runtime env files. `uv run --script scripts/selfhosted.py deploy app bookstack` creates missing env files, then stops if placeholders remain.
+Before deploy, set matching `DB_PASSWORD` and `MYSQL_PASSWORD`, a unique `APP_KEY`, and the exact public `APP_URL` in generated runtime env files. `scripts/selfhosted deploy app bookstack` creates missing env files, then stops if placeholders remain.
 
 ```sh
 openssl rand -base64 32
 nano ~/selfhosted/services/bookstack/bookstack.env
 nano ~/selfhosted/services/bookstack/bookstack-db.env
-uv run --script scripts/selfhosted.py deploy app bookstack
+scripts/selfhosted deploy app bookstack
 ```
 
 Set `BOOKSTACK_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`. Change default login `admin@admin.com / password` immediately.
@@ -49,4 +49,4 @@ Set `BOOKSTACK_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`. Change default
 - `bookstack-db.env.example` holds DB name and password vars.
 - `bookstack.env.example` holds app URL, app key, and DB host/user vars.
 - `mysql/`, `public-uploads/`, and `storage-uploads/` are persistent data paths.
-- Backups, checks, and manual install live in `docs/operations.md`.
+- Back up `mysql/`, `public-uploads/`, and `storage-uploads/` together while the app is stopped, or use a consistent MySQL dump.

@@ -8,6 +8,7 @@ Network=bookstack-internal.network
 EnvironmentFile=%h/selfhosted/services/bookstack/bookstack-db.env
 Volume=%h/selfhosted/services/bookstack/mysql:/var/lib/mysql:Z
 AutoUpdate=registry
+NoNewPrivileges=true
 
 [Service]
 Restart=always

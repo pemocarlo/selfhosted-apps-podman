@@ -12,6 +12,7 @@ EnvironmentFile=%h/selfhosted/services/bookstack/bookstack.env
 Volume=%h/selfhosted/services/bookstack/public-uploads:/var/www/bookstack/public/uploads:Z
 Volume=%h/selfhosted/services/bookstack/storage-uploads:/var/www/bookstack/storage/uploads:Z
 AutoUpdate=registry
+NoNewPrivileges=true
 
 [Service]
 Restart=always

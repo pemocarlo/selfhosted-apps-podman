@@ -2,7 +2,7 @@
 Description=Caddy static site - local test
 
 [Container]
-Image=docker.io/library/caddy:2-alpine
+Image=docker.io/library/caddy:2.11.4-alpine
 ContainerName=caddy-static
 EnvironmentFile=%h/selfhosted/gateway/caddy.env
 PublishPort=127.0.0.1:8080:80
@@ -13,9 +13,11 @@ Volume=%h/selfhosted/gateway/site:/srv:Z,ro
 Volume=%h/selfhosted/gateway/data:/data:Z
 Volume=%h/selfhosted/gateway/config:/config:Z
 AutoUpdate=registry
+NoNewPrivileges=true
 
 [Service]
 Restart=always
+TimeoutStartSec=900
 
 [Install]
 WantedBy=default.target

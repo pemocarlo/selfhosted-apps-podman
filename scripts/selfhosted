@@ -20,7 +20,26 @@ Usage:
   scripts/selfhosted update <name|gateway|all>
   scripts/selfhosted status [name|gateway|all]
   scripts/selfhosted list
+  scripts/selfhosted check
 EOF
+}
+
+require_commands() {
+  local command
+  for command in podman systemctl install; do
+    command -v "$command" >/dev/null || die "missing required command: $command"
+  done
+}
+
+check_host() {
+  require_commands
+  [[ "$(podman info --format '{{.Host.CgroupsVersion}}')" == "v2" ]] ||
+    die "Podman Quadlet requires cgroup v2"
+  systemctl --user show-environment >/dev/null ||
+    die "user systemd is unavailable; log in as the deployment user and enable lingering"
+  printf 'Podman %s; cgroup v2; user systemd available\n' "$(podman version --format '{{.Client.Version}}')"
+  validate_caddy "$ROOT/gateway" "$ROOT/gateway/caddy.env.example"
+  printf 'configuration checks passed\n'
 }
 
 require_app() {
@@ -61,14 +80,27 @@ install_quadlets() {
 
 install_env_templates() {
   local source="$1" target="$2" template destination
-  for template in "$source"/*.example.env; do
+  for template in "$source"/*.example.env "$source"/*.env.example; do
     [[ -e "$template" ]] || continue
-    destination="$target/$(basename "${template%.example.env}").env"
+    if [[ "$template" == *.example.env ]]; then
+      destination="$target/$(basename "${template%.example.env}").env"
+    else
+      destination="$target/$(basename "${template%.env.example}").env"
+    fi
     if [[ ! -e "$destination" ]]; then
       install -m 0600 "$template" "$destination"
       printf 'created %s; edit placeholders before production use\n' "$destination"
     fi
   done
+}
+
+validate_caddy() {
+  local source="$1" env_file="$2"
+  podman run --rm --env-file "$env_file" \
+    -v "$source/Caddyfile:/etc/caddy/Caddyfile:ro,Z" \
+    -v "$source/conf.d:/etc/caddy/conf.d:ro,Z" \
+    docker.io/library/caddy:2.11.4-alpine \
+    caddy validate --config /etc/caddy/Caddyfile
 }
 
 prepare_app_runtime() {
@@ -102,6 +134,8 @@ deploy_gateway() {
   cp -a "$source/conf.d/." "$target/conf.d/"
   cp -a "$source/site/." "$target/site/"
   install_env_templates "$source" "$target"
+  check_placeholders "$target"
+  validate_caddy "$target" "$target/caddy.env"
   install -m 0644 "$source/quadlet/caddy-public.network" "$QUADLET_DIR/caddy-public.network"
   install -m 0644 "$source/quadlet/caddy-$profile.container" "$QUADLET_DIR/caddy-static.container"
   systemctl --user daemon-reload
@@ -224,6 +258,7 @@ show_status() {
 }
 
 command="${1:-}"
+[[ "$command" == "check" || "$command" == "list" || "$command" == "-h" || "$command" == "--help" || "$command" == "help" || -z "$command" ]] || require_commands
 case "$command" in
   deploy)
     case "${2:-}" in
@@ -243,6 +278,7 @@ case "$command" in
     ;;
   status) show_status "${2:-all}" ;;
   list) list_apps ;;
+  check) check_host ;;
   -h|--help|help|"") usage ;;
   *) usage; exit 1 ;;
 esac

@@ -98,4 +98,4 @@ jobs:
           esac
 
           ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" \
-            "cd '$DEPLOY_PATH' && uv run --script scripts/selfhosted.py $COMMAND"
+            "cd '$DEPLOY_PATH' && scripts/selfhosted $COMMAND"

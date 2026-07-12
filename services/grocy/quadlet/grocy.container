@@ -8,9 +8,11 @@ Network=caddy-public.network
 EnvironmentFile=%h/selfhosted/services/grocy/grocy.env
 Volume=%h/selfhosted/services/grocy/config:/config:Z
 AutoUpdate=registry
+NoNewPrivileges=true
 
 [Service]
 Restart=always
+TimeoutStartSec=900
 
 [Install]
 WantedBy=default.target

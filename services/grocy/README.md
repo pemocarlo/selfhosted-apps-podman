@@ -29,13 +29,13 @@ GROCY_SITE_ADDRESS=grocy.example.com
 Review generated `~/selfhosted/services/grocy/grocy.env` for `PUID`, `PGID`, and `TZ`. Set `GROCY_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`.
 
 ```sh
-uv run --script scripts/selfhosted.py deploy app grocy
-uv run --script scripts/selfhosted.py update grocy
-uv run --script scripts/selfhosted.py disable grocy
+scripts/selfhosted deploy app grocy
+scripts/selfhosted update grocy
+scripts/selfhosted disable grocy
 ```
 
 ## Notes
 
 - `config/` is the only persistent app data path.
 - `grocy.env.example` is the only service env template.
-- Backups and troubleshooting live in `docs/operations.md`.
+- Back up `~/selfhosted/services/grocy/config`.

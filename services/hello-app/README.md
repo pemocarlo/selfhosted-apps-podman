@@ -39,9 +39,9 @@ Build them on VPS before deploy, or change `Image=` to registry references and `
 ## Commands
 
 ```sh
-uv run --script scripts/selfhosted.py deploy app hello-app
-uv run --script scripts/selfhosted.py update hello-app
-uv run --script scripts/selfhosted.py disable hello-app
+scripts/selfhosted deploy app hello-app
+scripts/selfhosted update hello-app
+scripts/selfhosted disable hello-app
 ```
 
 ## Notes

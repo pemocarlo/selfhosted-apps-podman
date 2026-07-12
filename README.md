@@ -1,89 +1,79 @@
-# Self-hosted Apps with Podman Quadlets
+# Self-hosted Apps with Podman and Caddy
 
-Rootless Podman Quadlets run independent apps behind one Caddy gateway. Application source and image builds belong in separate repositories.
+Run independent apps as rootless Podman 5.8 Quadlets behind one Caddy 2.11 gateway. App source and image builds belong in their own repositories.
 
-## Layout
+## Requirements
 
-- `gateway/`: shared Caddy gateway, public network, routes, and static landing page.
-- `services/<name>/`: one independently deployable app or app group.
-- `scripts/selfhosted.py`: canonical deploy, disable, update, and status commands. Run with `uv`.
-- `scripts/selfhosted`: Bash fallback kept for now.
-- `.github/workflows/deploy.yml`: SSH deployment from GitHub Actions.
-- `docs/operations.md`: manual install, troubleshooting, and maintenance.
+- A Linux VPS with Podman 5.8.x, cgroup v2, and user systemd
+- A non-root deployment user with lingering enabled
+- DNS records pointing each production hostname to the VPS
+- Inbound TCP `80`/`443` and UDP `443` allowed
 
-Runtime configuration and data live outside Git:
+One-time host setup (the first two commands require an administrator):
+
+```sh
+sudo loginctl enable-linger "$USER"
+sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
+# Make the sysctl persistent using your distribution's /etc/sysctl.d mechanism.
+
+git clone <repository-url> ~/selfhosted-infra
+cd ~/selfhosted-infra
+scripts/selfhosted check
+```
+
+The low-port sysctl lets the rootless gateway bind ports 80 and 443. If your provider redirects high ports instead, adjust the production Quadlet and omit it.
+
+## Quick start
+
+Test locally first:
+
+```sh
+scripts/selfhosted deploy gateway local
+curl -I http://localhost:8080
+scripts/selfhosted list
+scripts/selfhosted deploy app grocy
+```
+
+For production, edit the generated hostnames, point DNS at the VPS, then switch profiles:
+
+```sh
+nano ~/selfhosted/gateway/caddy.env
+scripts/selfhosted deploy gateway production
+```
+
+Apps with secrets stop on their first deploy after creating mode-`0600` env files. Edit the reported files and rerun the same command; existing env files and runtime data are never overwritten.
+
+## Everyday commands
+
+```sh
+scripts/selfhosted deploy app <name>       # install or re-enable one app
+scripts/selfhosted update <name|gateway>   # pull and restart one component
+scripts/selfhosted update all              # update every enabled component
+scripts/selfhosted disable <name>           # stop app; preserve all data
+scripts/selfhosted status [name|gateway|all]
+scripts/selfhosted check
+```
+
+`deploy all [local|production]` deploys the gateway and all enabled apps. A disabled app stays disabled until explicitly deployed.
+
+## Where files live
 
 ```text
-~/selfhosted/
-  gateway/{caddy.env,data,config,...}
-  services/<name>/{*.env,data-directories...}
-~/.config/containers/systemd/
+repository/                         version-controlled definitions
+~/selfhosted/                       env files and persistent runtime data
+~/.config/containers/systemd/       installed rootless Quadlets
 ```
 
-Real `*.env` files are ignored. Commit only sanitized `*.example.env` templates.
+Never commit real env files, credentials, keys, databases, uploads, or backups. Only sanitized `*.example.env`/`*.env.example` templates belong here.
 
-## Automated Operations
+See [operations](docs/operations.md) for manual operation, validation, troubleshooting, updates, and backups. Each service README documents only its settings and data paths.
 
-Run from repository root on the VPS:
+## Optional GitHub deployment
 
-```sh
-# First deploy.
-uv run --script scripts/selfhosted.py deploy gateway production
-uv run --script scripts/selfhosted.py deploy app grocy
-uv run --script scripts/selfhosted.py deploy all production
+The included workflow syncs this repository over SSH and runs the same helper. Configure the `production` environment with secrets `VPS_HOST`, `VPS_USER`, `VPS_PORT`, `VPS_SSH_KEY`, and trusted `VPS_KNOWN_HOSTS`; optionally set `VPS_DEPLOY_PATH` (default `selfhosted-infra`). Run the first deployment manually on the VPS so you can create and edit runtime env files. Protect the environment with required reviewers if desired.
 
-# Independent lifecycle. Disable persists across deploy/update all.
-uv run --script scripts/selfhosted.py disable grocy
-uv run --script scripts/selfhosted.py deploy app grocy
-uv run --script scripts/selfhosted.py status grocy
+Use a dedicated Ed25519 deployment key and obtain `known_hosts` from a connection you have independently verified. Repository secrets are never copied into runtime env files.
 
-# Pull configured registry images and restart only selected component.
-uv run --script scripts/selfhosted.py update grocy
-uv run --script scripts/selfhosted.py update all
-```
+## Add an app
 
-Deployment creates missing env files from `*.example.env` with mode `0600`. It stops if an app env still contains `CHANGE_ME`; edit files under `~/selfhosted/services/<name>/`, then rerun. Existing env files are never overwritten. Edit generated `~/selfhosted/gateway/caddy.env` before public use. Disable creates a runtime `.disabled` marker; `deploy all` and `update all` skip marked apps, while explicit `deploy app <name>` re-enables one.
-
-## GitHub Actions Deployment
-
-Workflow syncs repository files over SSH, includes safe `*.example.env` templates, excludes runtime `*.env`, then runs `uv run --script scripts/selfhosted.py`. Pushes to `main` deploy all with production gateway. Manual workflow runs can deploy, update, or disable one target.
-
-1. Create a dedicated key:
-
-```sh
-ssh-keygen -t ed25519 -f ~/.ssh/github-actions-vps -C github-actions-vps
-```
-
-2. Add `~/.ssh/github-actions-vps.pub` to deployment user's `~/.ssh/authorized_keys` on VPS. Verify that user can run `systemctl --user`, Podman, and `loginctl enable-linger`.
-3. Capture host key from a trusted connection:
-
-```sh
-ssh-keyscan -H your-vps.example.com
-```
-
-4. In GitHub repository `Settings > Secrets and variables > Actions`, add:
-
-| Type     | Name              | Value                                            |
-| -------- | ----------------- | ------------------------------------------------ |
-| Secret   | `VPS_HOST`        | VPS hostname or IP                               |
-| Secret   | `VPS_USER`        | rootless deployment user                         |
-| Secret   | `VPS_PORT`        | SSH port, usually `22`                           |
-| Secret   | `VPS_SSH_KEY`     | private key contents                             |
-| Secret   | `VPS_KNOWN_HOSTS` | trusted `ssh-keyscan` output                     |
-| Variable | `VPS_DEPLOY_PATH` | repository sync path, default `selfhosted-infra` |
-
-5. Before first CI deploy, run deployment once on VPS, edit generated env files, and rerun. GitHub Actions cannot and should not upload secrets from this repository.
-6. Protect the GitHub `production` environment if deployments require approval.
-
-## Backups
-
-Back up runtime data, not generated containers:
-
-- `~/selfhosted/gateway/data` and `~/selfhosted/gateway/config`
-- `~/selfhosted/services/*/` including env files and app data
-
-Test restoration. Database-backed apps need consistent database backups before upgrades.
-
-## Add an App
-
-Add `services/<name>/quadlet/`, safe `*.example.env` templates, persistent-directory `.gitkeep` files, a route in `gateway/conf.d/`, and a short service README containing only app-specific settings, tests, and backup paths.
+Add `services/<name>/quadlet/`, safe env templates, persistent-directory `.gitkeep` files, one route under `gateway/conf.d/`, and a short service README. Connect only the proxy-facing container to `caddy-public.network`; keep databases on a private app network.

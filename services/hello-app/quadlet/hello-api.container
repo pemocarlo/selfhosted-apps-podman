@@ -6,9 +6,11 @@ Image=localhost/hello-api:latest
 ContainerName=hello-api
 Network=caddy-public.network
 AutoUpdate=local
+NoNewPrivileges=true
 
 [Service]
 Restart=always
+TimeoutStartSec=900
 
 [Install]
 WantedBy=default.target
