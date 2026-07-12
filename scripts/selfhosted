@@ -2,263 +2,201 @@
 set -Eeuo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-RUNTIME_ROOT="${SELFHOSTED_ROOT:-$HOME/selfhosted}"
-QUADLET_DIR="${QUADLET_DIR:-$HOME/.config/containers/systemd}"
+STATE="${SELFHOSTED_ROOT:-$HOME/selfhosted}"
+QUADLETS="${QUADLET_DIR:-$HOME/.config/containers/systemd}"
 
-die() {
-  printf 'error: %s\n' "$*" >&2
-  exit 1
-}
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-Usage:
-  scripts/selfhosted deploy gateway [local|production]
-  scripts/selfhosted deploy app <name>
-  scripts/selfhosted deploy all [local|production]
-  scripts/selfhosted disable <name>
-  scripts/selfhosted update <name|gateway|all>
-  scripts/selfhosted status [name|gateway|all]
-  scripts/selfhosted list
-  scripts/selfhosted check
+Usage: scripts/selfhosted COMMAND [TARGET]
+
+  deploy gateway [local|production]
+  deploy app NAME
+  deploy all [local|production]
+  update NAME|gateway|all
+  disable NAME
+  status [NAME|gateway|all]
+  list
+  check
 EOF
 }
 
-require_commands() {
-  local command
-  for command in podman systemctl install; do
-    command -v "$command" >/dev/null || die "missing required command: $command"
-  done
-}
-
-check_host() {
-  require_commands
-  [[ "$(podman info --format '{{.Host.CgroupsVersion}}')" == "v2" ]] ||
-    die "Podman Quadlet requires cgroup v2"
-  systemctl --user show-environment >/dev/null ||
-    die "user systemd is unavailable; log in as the deployment user and enable lingering"
-  printf 'Podman %s; cgroup v2; user systemd available\n' "$(podman version --format '{{.Client.Version}}')"
-  validate_caddy "$ROOT/gateway" "$ROOT/gateway/caddy.env.example"
-  printf 'configuration checks passed\n'
-}
-
-require_app() {
-  local app="${1:-}"
-  [[ "$app" =~ ^[a-z0-9][a-z0-9-]*$ && -d "$ROOT/services/$app/quadlet" ]] ||
-    die "unknown app '$app'; run 'scripts/selfhosted list'"
-}
-
-list_apps() {
+apps() {
   local path
   for path in "$ROOT"/services/*; do
     [[ -d "$path/quadlet" ]] && basename "$path"
   done
 }
 
-is_disabled() {
-  [[ -e "$RUNTIME_ROOT/services/$1/.disabled" ]]
+app_source() {
+  [[ "${1:-}" =~ ^[a-z0-9][a-z0-9-]*$ && -d "$ROOT/services/$1/quadlet" ]] ||
+    die "unknown app '${1:-}'; run 'scripts/selfhosted list'"
+  printf '%s\n' "$ROOT/services/$1"
 }
 
-unit_names() {
-  local source="$1" file
-  for file in "$source"/quadlet/*.container; do
-    [[ -e "$file" ]] && printf '%s.service\n' "$(basename "$file" .container)"
+units() {
+  local file
+  for file in "$1"/quadlet/*.container; do
+    [[ -f "$file" ]] && printf '%s.service\n' "$(basename "$file" .container)"
   done
 }
 
-unit_names_reverse() {
-  unit_names "$1" | sort -r
+install_templates() {
+  local source="$1" target="$2" template name destination
+  mkdir -p "$target"
+  for template in "$source"/*.example.env "$source"/*.env.example; do
+    [[ -f "$template" ]] || continue
+    name="$(basename "$template")"
+    [[ "$name" == *.example.env ]] && name="${name%.example.env}.env" || name="${name%.env.example}.env"
+    destination="$target/$name"
+    [[ -e "$destination" ]] || {
+      install -m 0600 "$template" "$destination"
+      printf 'created %s; edit it and deploy again if it contains placeholders\n' "$destination"
+    }
+  done
+}
+
+reject_placeholders() {
+  grep -Rqs CHANGE_ME "$1"/*.env 2>/dev/null &&
+    die "replace CHANGE_ME in $1/*.env, then deploy again"
+  return 0
 }
 
 install_quadlets() {
-  local source="$1" file
-  mkdir -p "$QUADLET_DIR"
-  for file in "$source"/quadlet/*; do
-    [[ -f "$file" ]] && install -m 0644 "$file" "$QUADLET_DIR/$(basename "$file")"
+  local file
+  mkdir -p "$QUADLETS"
+  for file in "$1"/quadlet/*; do
+    [[ -f "$file" ]] && install -m 0644 "$file" "$QUADLETS/$(basename "$file")"
   done
 }
 
-install_env_templates() {
-  local source="$1" target="$2" template destination
-  for template in "$source"/*.example.env "$source"/*.env.example; do
-    [[ -e "$template" ]] || continue
-    if [[ "$template" == *.example.env ]]; then
-      destination="$target/$(basename "${template%.example.env}").env"
-    else
-      destination="$target/$(basename "${template%.env.example}").env"
-    fi
-    if [[ ! -e "$destination" ]]; then
-      install -m 0600 "$template" "$destination"
-      printf 'created %s; edit placeholders before production use\n' "$destination"
-    fi
+prepare_app() {
+  local app="$1" source target path
+  source="$(app_source "$app")"
+  target="$STATE/services/$app"
+  install_templates "$source" "$target"
+  for path in "$source"/*; do
+    [[ -d "$path" && "$(basename "$path")" != quadlet ]] || continue
+    mkdir -p "$target/$(basename "$path")"
+    cp -a "$path/." "$target/$(basename "$path")/"
   done
+  reject_placeholders "$target"
 }
 
 validate_caddy() {
-  local source="$1" env_file="$2"
-  podman run --rm --env-file "$env_file" \
-    -v "$source/Caddyfile:/etc/caddy/Caddyfile:ro,Z" \
-    -v "$source/conf.d:/etc/caddy/conf.d:ro,Z" \
+  podman run --rm --env-file "$2" \
+    -v "$1/Caddyfile:/etc/caddy/Caddyfile:ro,Z" \
+    -v "$1/conf.d:/etc/caddy/conf.d:ro,Z" \
     docker.io/library/caddy:2.11.4-alpine \
     caddy validate --config /etc/caddy/Caddyfile
 }
 
-prepare_app_runtime() {
-  local app="$1" source target path
-  source="$ROOT/services/$app"
-  target="$RUNTIME_ROOT/services/$app"
-  mkdir -p "$target"
-  install_env_templates "$source" "$target"
-
-  for path in "$source"/*; do
-    [[ -d "$path" && "$(basename "$path")" != "quadlet" ]] || continue
-    mkdir -p "$target/$(basename "$path")"
-    cp -a "$path/." "$target/$(basename "$path")/"
-  done
-}
-
-check_placeholders() {
-  local target="$1"
-  if grep -Rqs 'CHANGE_ME' "$target"/*.env 2>/dev/null; then
-    die "edit CHANGE_ME placeholders in $target/*.env, then deploy again"
-  fi
-}
-
 deploy_gateway() {
-  local profile="${1:-production}" source="$ROOT/gateway" target="$RUNTIME_ROOT/gateway"
-  [[ "$profile" == "local" || "$profile" == "production" ]] ||
-    die "gateway profile must be local or production"
-
-  mkdir -p "$target/conf.d" "$target/site" "$target/data" "$target/config" "$QUADLET_DIR"
+  local profile="${1:-production}" source="$ROOT/gateway" target="$STATE/gateway"
+  [[ "$profile" == local || "$profile" == production ]] || die 'profile must be local or production'
+  mkdir -p "$target"/{conf.d,site,data,config} "$QUADLETS"
   install -m 0644 "$source/Caddyfile" "$target/Caddyfile"
   cp -a "$source/conf.d/." "$target/conf.d/"
   cp -a "$source/site/." "$target/site/"
-  install_env_templates "$source" "$target"
-  check_placeholders "$target"
+  install_templates "$source" "$target"
+  reject_placeholders "$target"
   validate_caddy "$target" "$target/caddy.env"
-  install -m 0644 "$source/quadlet/caddy-public.network" "$QUADLET_DIR/caddy-public.network"
-  install -m 0644 "$source/quadlet/caddy-$profile.container" "$QUADLET_DIR/caddy-static.container"
+  install -m 0644 "$source/quadlet/caddy-public.network" "$QUADLETS/caddy-public.network"
+  install -m 0644 "$source/quadlet/caddy-$profile.container" "$QUADLETS/caddy-static.container"
   systemctl --user daemon-reload
   systemctl --user restart caddy-static.service
   printf 'deployed gateway (%s)\n' "$profile"
 }
 
 deploy_app() {
-  local app="${1:-}" source
-  local -a units
-  source="$ROOT/services/$app"
-  require_app "$app"
-  prepare_app_runtime "$app"
-  check_placeholders "$RUNTIME_ROOT/services/$app"
-  rm -f "$RUNTIME_ROOT/services/$app/.disabled"
+  local app="$1" source unit_list
+  source="$(app_source "$app")"
+  prepare_app "$app"
+  rm -f "$STATE/services/$app/.disabled"
   install_quadlets "$source"
   systemctl --user daemon-reload
-  mapfile -t units < <(unit_names "$source")
-  ((${#units[@]})) && systemctl --user restart "${units[@]}"
+  unit_list="$(units "$source")"
+  [[ -z "$unit_list" ]] || systemctl --user restart $unit_list
   systemctl --user try-restart caddy-static.service
-  printf 'deployed app %s\n' "$app"
+  printf 'deployed %s\n' "$app"
 }
 
 deploy_all() {
-  local profile="${1:-production}" app
-  deploy_gateway "$profile"
-  while IFS= read -r app; do
-    if is_disabled "$app"; then
-      printf 'skip disabled app %s\n' "$app"
-    else
-      deploy_app "$app"
-    fi
-  done < <(list_apps)
-}
-
-disable_app() {
-  local app="${1:-}" source file
-  local -a units
-  source="$ROOT/services/$app"
-  require_app "$app"
-  mkdir -p "$RUNTIME_ROOT/services/$app"
-  touch "$RUNTIME_ROOT/services/$app/.disabled"
-  mapfile -t units < <(unit_names_reverse "$source")
-  ((${#units[@]})) && systemctl --user stop "${units[@]}" || true
-  for file in "$source"/quadlet/*; do
-    [[ -f "$file" ]] && rm -f "$QUADLET_DIR/$(basename "$file")"
-  done
-  systemctl --user daemon-reload
-  systemctl --user try-restart caddy-static.service
-  printf 'disabled app %s; runtime data preserved\n' "$app"
+  local app
+  deploy_gateway "${1:-production}"
+  while read -r app; do
+    [[ -e "$STATE/services/$app/.disabled" ]] && printf 'skip disabled %s\n' "$app" || deploy_app "$app"
+  done < <(apps)
 }
 
 pull_images() {
-  local source="$1" image
-  while IFS= read -r image; do
-    [[ -n "$image" ]] || continue
-    if [[ "$image" == localhost/* ]]; then
-      printf 'skip local image %s\n' "$image"
-    else
-      podman pull "$image"
-    fi
-  done < <(sed -n 's/^Image=//p' "$source"/quadlet/*.container | sort -u)
+  local image
+  while read -r image; do
+    [[ -z "$image" ]] || [[ "$image" == localhost/* ]] || podman pull "$image"
+  done < <(sed -n 's/^Image=//p' "$1"/quadlet/*.container | sort -u)
 }
 
-update_component() {
-  local component="${1:-}" source
-  local -a units
-  if [[ "$component" == "gateway" ]]; then
-    source="$ROOT/gateway"
-    pull_images "$source"
+update() {
+  local target="$1" app source
+  if [[ "$target" == all ]]; then
+    update gateway
+    while read -r app; do
+      [[ -e "$STATE/services/$app/.disabled" ]] || update "$app"
+    done < <(apps)
+  elif [[ "$target" == gateway ]]; then
+    pull_images "$ROOT/gateway"
     systemctl --user restart caddy-static.service
   else
-    require_app "$component"
-    is_disabled "$component" &&
-      die "$component is disabled; use 'scripts/selfhosted deploy app $component' to enable it"
-    source="$ROOT/services/$component"
-    prepare_app_runtime "$component"
-    check_placeholders "$RUNTIME_ROOT/services/$component"
-    install_quadlets "$source"
-    systemctl --user daemon-reload
+    source="$(app_source "$target")"
+    [[ ! -e "$STATE/services/$target/.disabled" ]] || die "$target is disabled"
     pull_images "$source"
-    mapfile -t units < <(unit_names "$source")
-    ((${#units[@]})) && systemctl --user restart "${units[@]}"
+    local unit_list
+    unit_list="$(units "$source")"
+    [[ -z "$unit_list" ]] || systemctl --user restart $unit_list
   fi
-  printf 'updated %s\n' "$component"
 }
 
-update_all() {
-  local app
-  update_component gateway
-  while IFS= read -r app; do
-    if is_disabled "$app"; then
-      printf 'skip disabled app %s\n' "$app"
-    else
-      update_component "$app"
-    fi
-  done < <(list_apps)
+disable() {
+  local app="$1" source file unit_list
+  source="$(app_source "$app")"
+  mkdir -p "$STATE/services/$app"
+  touch "$STATE/services/$app/.disabled"
+  unit_list="$(units "$source")"
+  [[ -z "$unit_list" ]] || systemctl --user stop $unit_list || true
+  for file in "$source"/quadlet/*; do rm -f "$QUADLETS/$(basename "$file")"; done
+  systemctl --user daemon-reload
+  printf 'disabled %s; data preserved\n' "$app"
 }
 
-show_status() {
-  local component="${1:-all}" app source
-  local -a units
-  if [[ "$component" == "all" ]]; then
-    show_status gateway
-    while IFS= read -r app; do show_status "$app"; done < <(list_apps)
-    return
-  fi
-  if [[ "$component" == "gateway" ]]; then
+status() {
+  local target="${1:-all}" app source unit_list
+  if [[ "$target" == all ]]; then
+    status gateway
+    while read -r app; do status "$app"; done < <(apps)
+  elif [[ "$target" == gateway ]]; then
     systemctl --user --no-pager --full status caddy-static.service || true
-    return
+  else
+    source="$(app_source "$target")"
+    [[ ! -e "$STATE/services/$target/.disabled" ]] || { printf '%s: disabled\n' "$target"; return; }
+    unit_list="$(units "$source")"
+    [[ -z "$unit_list" ]] || systemctl --user --no-pager --full status $unit_list || true
   fi
-  require_app "$component"
-  if is_disabled "$component"; then
-    printf '%s: disabled\n' "$component"
-    return
-  fi
-  source="$ROOT/services/$component"
-  mapfile -t units < <(unit_names "$source")
-  ((${#units[@]})) && systemctl --user --no-pager --full status "${units[@]}" || true
 }
 
-command="${1:-}"
-[[ "$command" == "check" || "$command" == "list" || "$command" == "-h" || "$command" == "--help" || "$command" == "help" || -z "$command" ]] || require_commands
+check() {
+  [[ "$(podman info --format '{{.Host.CgroupsVersion}}')" == v2 ]] || die 'Quadlet requires cgroup v2'
+  systemctl --user show-environment >/dev/null || die 'user systemd is unavailable; enable lingering'
+  validate_caddy "$ROOT/gateway" "$ROOT/gateway/caddy.env.example"
+  printf 'Podman %s; configuration checks passed\n' "$(podman version --format '{{.Client.Version}}')"
+}
+
+command="${1:-help}"
+if [[ "$command" != help && "$command" != list ]]; then
+  command -v podman >/dev/null && command -v systemctl >/dev/null && command -v install >/dev/null ||
+    die 'Podman, systemd, and install are required'
+fi
+
 case "$command" in
   deploy)
     case "${2:-}" in
@@ -266,19 +204,12 @@ case "$command" in
       app) deploy_app "${3:-}" ;;
       all) deploy_all "${3:-production}" ;;
       *) usage; exit 1 ;;
-    esac
-    ;;
-  disable) disable_app "${2:-}" ;;
-  update)
-    if [[ "${2:-}" == "all" ]]; then
-      update_all
-    else
-      update_component "${2:-}"
-    fi
-    ;;
-  status) show_status "${2:-all}" ;;
-  list) list_apps ;;
-  check) check_host ;;
-  -h|--help|help|"") usage ;;
+    esac ;;
+  update) update "${2:-}" ;;
+  disable) disable "${2:-}" ;;
+  status) status "${2:-all}" ;;
+  list) apps ;;
+  check) check ;;
+  help|-h|--help) usage ;;
   *) usage; exit 1 ;;
 esac

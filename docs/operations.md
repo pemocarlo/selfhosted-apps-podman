@@ -1,10 +1,10 @@
 # Operations
 
-The root [README](../README.md) is the installation guide. This page covers manual operation and recovery.
+See the root [README](../README.md) for setup and [manual installation](manual.md) for direct commands.
 
-## Manual Quadlet operation
+## Quadlet operation
 
-The helper copies definitions to `~/.config/containers/systemd/`, then runs:
+After changing a Quadlet:
 
 ```sh
 systemctl --user daemon-reload
@@ -19,7 +19,7 @@ systemd-analyze --user --generators=true verify <name>.service
 systemctl --user cat <name>.service
 ```
 
-Do not run `systemctl --user enable` on generated Quadlet services. Their `[Install]` sections are applied by the generator. To disable an app safely, use `scripts/selfhosted disable <name>`; it removes definitions but preserves `~/selfhosted/services/<name>`.
+Do not enable generated Quadlet services with `systemctl`; the generator applies their `[Install]` sections. `scripts/selfhosted disable <name>` removes definitions but preserves application data.
 
 ## Checks and troubleshooting
 
@@ -42,7 +42,7 @@ scripts/selfhosted update <name>
 scripts/selfhosted update all
 ```
 
-The helper pulls registry images and restarts only the selected component. Pinned tags change only when the Quadlet is updated; floating tags may introduce breaking changes. Back up before application or database upgrades.
+Updates pull registry images and restart only the selected component. Pinned tags change only when the Quadlet changes; floating tags may introduce breaking changes. Back up before upgrades.
 
 Quadlets contain `AutoUpdate=`, but automatic updates are not enabled by this repository. If you intentionally want unattended updates, enable the user timer with `systemctl --user enable --now podman-auto-update.timer` only after establishing tested backups and rollback procedures.
 

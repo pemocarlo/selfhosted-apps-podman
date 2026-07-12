@@ -64,15 +64,15 @@ repository/                         version-controlled definitions
 ~/.config/containers/systemd/       installed rootless Quadlets
 ```
 
-Never commit real env files, credentials, keys, databases, uploads, or backups. Only sanitized `*.example.env`/`*.env.example` templates belong here.
+Never commit real env files, credentials, keys, databases, uploads, or backups. Commit only sanitized env templates.
 
-See [operations](docs/operations.md) for manual operation, validation, troubleshooting, updates, and backups. Each service README documents only its settings and data paths.
+See [manual installation](docs/manual.md) for direct Podman/systemd commands and [operations](docs/operations.md) for troubleshooting, updates, and backups.
 
 ## Optional GitHub deployment
 
-The included workflow syncs this repository over SSH and runs the same helper. Configure the `production` environment with secrets `VPS_HOST`, `VPS_USER`, `VPS_PORT`, `VPS_SSH_KEY`, and trusted `VPS_KNOWN_HOSTS`; optionally set `VPS_DEPLOY_PATH` (default `selfhosted-infra`). Run the first deployment manually on the VPS so you can create and edit runtime env files. Protect the environment with required reviewers if desired.
+The included workflow deploys over SSH. Configure the `production` environment with secrets `VPS_HOST`, `VPS_USER`, `VPS_PORT`, `VPS_SSH_KEY`, and trusted `VPS_KNOWN_HOSTS`. `VPS_DEPLOY_PATH` defaults to `selfhosted-infra`. Complete the first deployment on the VPS to create and edit runtime env files.
 
-Use a dedicated Ed25519 deployment key and obtain `known_hosts` from a connection you have independently verified. Repository secrets are never copied into runtime env files.
+Use a dedicated Ed25519 key and verify the host key independently. Protect the GitHub environment with required reviewers when appropriate.
 
 ## Add an app
 
