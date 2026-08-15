@@ -1,44 +1,43 @@
 # Grocy
 
-LinuxServer.io Grocy household inventory app. Use root [README](../../README.md) and [operations docs](../../docs/operations.md).
+Grocy is a household inventory and organization app using the LinuxServer.io
+container image.
 
-## Files
+## Before deployment
 
-- `quadlet/grocy.container`: app container.
-- `grocy.example.env`: `PUID`, `PGID`, and `TZ` defaults.
-- `config/`: persistent Grocy application data.
-- `../../gateway/conf.d/grocy.caddy`: public route.
-
-## Example Lines
+Review the generated `~/selfhosted/services/grocy/grocy.env`:
 
 ```sh
-PUID=1000
-PGID=1000
-TZ=Etc/UTC
-GROCY_SITE_ADDRESS=grocy.example.com
+id -u
+id -g
+nano ~/selfhosted/services/grocy/grocy.env
 ```
 
-```caddyfile
-{$GROCY_SITE_ADDRESS:http://grocy.localhost:80} {
-	reverse_proxy grocy:80
-}
-```
+Set `PUID`, `PGID`, and `TZ` to suitable values for the deployment user. Set
+`GROCY_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env` before exposing it
+publicly.
 
-## Deploy
-
-Review generated `~/selfhosted/services/grocy/grocy.env` for `PUID`, `PGID`, and `TZ`. Run `id -u` and `id -g` to find the deployment user's values. Set `GROCY_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`.
+## Deploy and lifecycle
 
 ```sh
 scripts/selfhosted deploy grocy
+scripts/selfhosted status grocy
+scripts/selfhosted logs grocy --follow
+scripts/selfhosted restart grocy
 scripts/selfhosted update grocy
-scripts/selfhosted disable grocy
 ```
 
-Sign in with Grocy's initial `admin` / `admin` credentials and change the password immediately.
+Sign in with the initial `admin` / `admin` credentials and change the password
+immediately. After an image update, open Grocy's root page once so pending
+database migrations can run.
 
-## Notes
+Persistent application data is under
+`~/selfhosted/services/grocy/config`. Back up that directory; disabling or
+removing the service definition does not remove it.
 
-- `config/` is the only persistent app data path.
-- `grocy.example.env` is the only service env template.
-- After an image update, open Grocy's root page once so any pending database migrations run.
-- Back up `~/selfhosted/services/grocy/config`.
+## Further reading
+
+- [Grocy project site](https://grocy.info/)
+- [Grocy source and documentation](https://github.com/grocy/grocy)
+- [LinuxServer.io Grocy image documentation](https://docs.linuxserver.io/images/docker-grocy/)
+- [Manual lifecycle commands](../../docs/manual.md)

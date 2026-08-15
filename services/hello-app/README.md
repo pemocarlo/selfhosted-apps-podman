@@ -1,51 +1,40 @@
 # Hello App
 
-Example frontend/API deployment. Application source and image builds live in a separate repository. Use root [README](../../README.md) and [operations docs](../../docs/operations.md).
+Example frontend/API deployment. The application source and image builds live
+in a separate repository; this directory only demonstrates how two local
+images can be wired into Quadlets and Caddy.
 
-## Files
+## Images and routes
 
-- `quadlet/hello-api.container`: API container.
-- `quadlet/hello-web.container`: frontend container.
-- `../../gateway/conf.d/hello-api.caddy`: optional direct API hostname.
-- `../../gateway/conf.d/hello-web.caddy`: frontend hostname and `/api/*` proxy.
-
-## Example Lines
-
-```sh
-HELLO_WEB_SITE_ADDRESS=myapp.example.com
-HELLO_API_SITE_ADDRESS=api.example.com
-```
-
-```caddyfile
-{$HELLO_WEB_SITE_ADDRESS:http://myapp.localhost:80} {
-	handle /api/* {
-		reverse_proxy hello-api:8000
-	}
-	handle {
-		reverse_proxy hello-web:8080
-	}
-}
-```
-
-## Images
-
-Current Quadlets use local images:
+Build or load these images on the VPS before deployment:
 
 - `localhost/hello-api:latest`
 - `localhost/hello-web:latest`
 
-Build them on VPS before deploy, or change `Image=` to registry references and `AutoUpdate=registry`.
+The web route serves the frontend and proxies `/api/*` to `hello-api`. An
+optional separate API hostname is defined in `gateway/conf.d/hello-api.caddy`.
+Set `HELLO_WEB_SITE_ADDRESS` and, if needed, `HELLO_API_SITE_ADDRESS` in the
+gateway env file, then deploy the gateway.
 
-## Commands
+## Deploy and lifecycle
 
 ```sh
+podman image exists localhost/hello-api:latest
+podman image exists localhost/hello-web:latest
 scripts/selfhosted deploy hello-app
-scripts/selfhosted update hello-app
-scripts/selfhosted disable hello-app
+scripts/selfhosted status hello-app
+scripts/selfhosted logs hello-app --follow
+scripts/selfhosted restart hello-app
 ```
 
-## Notes
+Because these are local images, `scripts/selfhosted update hello-app` does not
+pull from a registry. Rebuild and retag both images, then run the update or
+restart command. This example has no persistent data paths; add them to the
+Quadlets and service README before using it as a real application template.
 
-- `hello-web` proxies `/api/*` to `hello-api`.
-- Set `HELLO_WEB_SITE_ADDRESS` and optional `HELLO_API_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`.
-- Service-specific test commands live in `docs/operations.md`.
+## Further reading
+
+- [Podman Quadlet documentation](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)
+- [Caddy reverse proxy directive](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+- [Adding a service in this repository](../../docs/adding-a-service.md)
+- [Manual lifecycle commands](../../docs/manual.md)

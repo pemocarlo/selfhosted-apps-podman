@@ -1,52 +1,57 @@
 # BookStack
 
-BookStack wiki plus private MySQL container. Use root [README](../../README.md) and [operations docs](../../docs/operations.md).
+BookStack is a wiki backed by a private MySQL container. The app is exposed
+through Caddy; MySQL is available only on `bookstack-internal.network`.
 
-## Files
+## Before deployment
 
-- `quadlet/bookstack.container`: app container.
-- `quadlet/bookstack-db.container`: MySQL container.
-- `quadlet/bookstack-internal.network`: private app-to-db network.
-- `bookstack.example.env`: app settings, URL, and secret placeholders.
-- `bookstack-db.example.env`: database name and credentials.
-- `mysql/`: persistent database data.
-- `public-uploads/`: public uploads.
-- `storage-uploads/`: private uploads.
-- `../../gateway/conf.d/bookstack.caddy`: public route.
+Set these values in the generated runtime env files:
 
-## Example Lines
+- `APP_URL`: the exact public URL, without a trailing slash.
+- `APP_KEY`: a new unique application key.
+- Matching `DB_PASSWORD` and `MYSQL_PASSWORD` values.
+- A strong `MYSQL_ROOT_PASSWORD`.
 
-```sh
-APP_URL=https://bookstack.example.com
-DB_PASSWORD=CHANGE_ME_DATABASE_PASSWORD
-MYSQL_PASSWORD=CHANGE_ME_DATABASE_PASSWORD
-BOOKSTACK_SITE_ADDRESS=bookstack.example.com
-```
-
-```caddyfile
-{$BOOKSTACK_SITE_ADDRESS:http://bookstack.localhost:80} {
-	reverse_proxy bookstack:8080
-}
-```
-
-## Deploy
-
-Before deploy, set matching `DB_PASSWORD` and `MYSQL_PASSWORD`, a unique `APP_KEY`, and the exact public `APP_URL` in generated runtime env files. `scripts/selfhosted deploy bookstack` creates missing env files, then stops if placeholders remain.
+The first deploy creates the env files and stops while `CHANGE_ME` placeholders
+remain:
 
 ```sh
+scripts/selfhosted deploy bookstack
 openssl rand -base64 32
 nano ~/selfhosted/services/bookstack/bookstack.env
 nano ~/selfhosted/services/bookstack/bookstack-db.env
 scripts/selfhosted deploy bookstack
 ```
 
-Set `BOOKSTACK_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env`. Change default login `admin@admin.com / password` immediately.
+Set `BOOKSTACK_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env` and redeploy
+the gateway. Change the initial `admin@admin.com` / `password` login
+immediately.
 
-## Notes
+## Lifecycle and data
 
-- `bookstack.container` depends on `bookstack-db.container`.
-- `bookstack-internal.network` keeps database traffic private.
-- `bookstack-db.example.env` holds DB name and password vars.
-- `bookstack.example.env` holds app URL, app key, and DB host/user vars.
-- `mysql/`, `public-uploads/`, and `storage-uploads/` are persistent data paths.
-- Back up `mysql/`, `public-uploads/`, and `storage-uploads/` together while the app is stopped, or use a consistent MySQL dump.
+`bookstack.service` requires `bookstack-db.service`; restarting the app does
+not remove or recreate the database data.
+
+```sh
+scripts/selfhosted status bookstack
+scripts/selfhosted logs bookstack --follow
+scripts/selfhosted restart bookstack
+scripts/selfhosted update bookstack
+```
+
+Back up these paths together:
+
+- `~/selfhosted/services/bookstack/mysql/`
+- `~/selfhosted/services/bookstack/public-uploads/`
+- `~/selfhosted/services/bookstack/storage-uploads/`
+
+For a consistent backup, stop the app or use a database-native MySQL dump.
+Test the restore before upgrading the image.
+
+## Further reading
+
+- [BookStack documentation](https://www.bookstackapp.com/docs/)
+- [BookStack installation](https://www.bookstackapp.com/docs/admin/installation/)
+- [BookStack backup and restore](https://www.bookstackapp.com/docs/admin/backup-restore/)
+- [BookStack system CLI](https://www.bookstackapp.com/docs/admin/system-cli/)
+- [Manual lifecycle commands](../../docs/manual.md)

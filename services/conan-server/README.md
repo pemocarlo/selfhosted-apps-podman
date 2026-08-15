@@ -1,40 +1,50 @@
 # Conan Server
 
-`conan_server` is a basic Conan remote without a web UI. Conan documents it mainly for testing, though it may suit a small trusted team. Users and passwords are stored as plaintext in `server.conf`.
+`conan_server` is a small Conan remote without a web UI. Conan documents it
+mainly for testing, though it may suit a small trusted team. User passwords
+are stored as plaintext in `server.conf`; use Artifactory for a larger or
+security-sensitive installation.
 
 ## Image
 
-The Quadlet expects `localhost/conan-server:2.30.0`. Build and publish this image from a separate image repository using:
-
-```dockerfile
-FROM docker.io/library/python:3.13-slim
-RUN pip install --no-cache-dir conan-server==2.30.0
-EXPOSE 9300
-ENTRYPOINT ["conan_server"]
-```
-
-Change `Image=` and `AutoUpdate=` if using a registry image.
+The Quadlet expects `localhost/conan-server:2.30.0`. Build this image in the
+separate image/source repository, then confirm it exists locally:
 
 ```sh
 podman build -t localhost/conan-server:2.30.0 .
+podman image exists localhost/conan-server:2.30.0
 ```
 
-## Deploy
+Change `Image=` and `AutoUpdate=` in the Quadlet if the image is published to
+a registry.
+
+## Deploy and configure
 
 ```sh
-podman image exists localhost/conan-server:2.30.0
 scripts/selfhosted deploy conan-server
 nano ~/selfhosted/services/conan-server/server.conf
 scripts/selfhosted deploy conan-server
 ```
 
-The first deploy creates `server.conf` and stops at its placeholders. Generate two different secrets with `openssl rand -hex 32`, set a strong password, and rerun deployment. Set `CONAN_SERVER_SITE_ADDRESS=conan.example.com` in the gateway env and redeploy the gateway.
+Replace both generated secrets, set a strong user password, and keep
+`ssl_enabled: True` when clients connect through Caddy over HTTPS. Set
+`CONAN_SERVER_SITE_ADDRESS` in the gateway env file and redeploy the gateway.
 
-Configure a client:
+The server does not hot-reload its configuration:
 
 ```sh
-conan remote add private https://conan.example.com
-conan remote login private conan
+scripts/selfhosted status conan-server
+scripts/selfhosted logs conan-server --follow
+scripts/selfhosted restart conan-server
 ```
 
-Back up `~/selfhosted/services/conan-server/data` and `server.conf` together. Restart the service after configuration changes; it does not hot-reload.
+Back up `~/selfhosted/services/conan-server/server.conf` and
+`~/selfhosted/services/conan-server/data` together. The server data directory
+contains the uploaded packages.
+
+## Further reading
+
+- [Official Conan Server documentation](https://docs.conan.io/2/reference/conan_server.html)
+- [Conan remote commands](https://docs.conan.io/2/reference/commands/remote.html)
+- [Artifactory CE for private development](https://docs.jfrog.com/installation/docs/installing-artifactory)
+- [Manual lifecycle commands](../../docs/manual.md)
