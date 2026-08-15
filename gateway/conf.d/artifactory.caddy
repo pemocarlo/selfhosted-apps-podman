@@ -1,4 +1,15 @@
 {$ARTIFACTORY_SITE_ADDRESS:http://artifactory.localhost:80} {
 	encode zstd gzip
-	reverse_proxy artifactory:8082
+
+	# Artifactory CE calls this optional endpoint even with JFConnect disabled.
+	# Return an empty success so the UI does not show a backend-error popup.
+	@chilipiper path /ui/api/v1/enrichment/lead/chilipiper
+	handle @chilipiper {
+		header Content-Type application/json
+		respond "{}" 200
+	}
+
+	handle {
+		reverse_proxy artifactory:8082
+	}
 }

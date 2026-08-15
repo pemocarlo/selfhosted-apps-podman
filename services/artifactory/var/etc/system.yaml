@@ -1,0 +1,4 @@
+# Fresh-install seed. The deployment script copies this only when the
+# runtime system.yaml does not already exist.
+jfconnect:
+  enabled: false

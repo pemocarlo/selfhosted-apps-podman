@@ -29,3 +29,6 @@ services/*/data/*
 !services/*/data/.gitkeep
 services/*/var/*
 !services/*/var/.gitkeep
+# This is a small non-secret fresh-install seed; live Artifactory state stays ignored.
+!services/artifactory/var/etc/
+!services/artifactory/var/etc/system.yaml

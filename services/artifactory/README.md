@@ -58,6 +58,24 @@ The Artifactory env file is generated from
 initial installation currently retains JFrog's default `admin` / `password`
 login until it is changed through the UI.
 
+Fresh installs also seed `var/etc/system.yaml` with the root-level setting
+`jfconnect.enabled: false`. `scripts/selfhosted` copies this seed only when
+the runtime file does not already exist, so it does not overwrite generated
+keys, database settings, or an administrator's later configuration changes.
+Re-enable JFConnect manually in that file, then restart Artifactory, if a
+future installation needs Curation or another entitlement-backed feature.
+
+### Configuration ownership
+
+The tracked `services/artifactory/var/etc/system.yaml` is intentionally only
+a small, non-secret bootstrap seed. The complete runtime file at
+`~/selfhosted/services/artifactory/var/etc/system.yaml` belongs to the
+installation: JFrog may add generated settings and it is covered by the
+private state backup. Do not replace the runtime file with a repository copy,
+and do not commit the full runtime `var` directory. This keeps generated keys,
+installation-specific settings, and future JFrog changes out of Git while
+still making the fresh-install JFConnect default reproducible.
+
 ## Troubleshooting
 
 ### Slow first screen
@@ -109,6 +127,67 @@ scripts/selfhosted restart artifactory
 JFrog documents JFConnect as required for Curation, so re-evaluate this
 setting before enabling Curation or other entitlement-backed features, and
 after changing the image version.
+
+### Login popup from optional lead enrichment
+
+The CE frontend may request the following optional endpoint after login even
+when JFConnect is intentionally disabled:
+
+```text
+/ui/api/v1/enrichment/lead/chilipiper
+```
+
+On this CE image, the request reaches the frontend service, which tries to
+initialize JFConnect and returns `500` because `jfconnect.enabled` is `false`.
+The result is a browser popup such as `Server Error — Request failed with
+status code 500`. The `frontend.featureToggler.commonShouldEnableChiliPiper`
+setting is not accepted by this CE build, so do not add it to `system.yaml`.
+
+The tracked Caddy route in `gateway/conf.d/artifactory.caddy` handles only this
+optional endpoint and returns an empty JSON success response. All other
+Artifactory and Conan paths continue to use `reverse_proxy artifactory:8082`.
+This keeps JFConnect disabled and avoids changing Artifactory data or
+authentication behavior.
+
+Deploy and validate the workaround with:
+
+```sh
+scripts/selfhosted deploy gateway production
+
+curl -ksS https://<artifactory-host>/ui/api/v1/enrichment/lead/chilipiper \
+  -o - -w '\nstatus=%{http_code} content_type=%{content_type}\n'
+curl -fsS https://<artifactory-host>/artifactory/api/system/ping
+curl -fsS https://<artifactory-host>/router/api/v1/system/health
+```
+
+The first command should return `{}` with status `200` and content type
+`application/json`; the health checks should also return `200`. A normal
+Artifactory login may still cause the browser to issue the optional request,
+but Caddy answers it locally so it does not reach Artifactory or produce a
+popup.
+
+To revert the workaround, remove the `@chilipiper` matcher and its `handle`
+block from `gateway/conf.d/artifactory.caddy`, restore the direct proxy:
+
+```caddyfile
+{$ARTIFACTORY_SITE_ADDRESS:http://artifactory.localhost:80} {
+    encode zstd gzip
+    reverse_proxy artifactory:8082
+}
+```
+
+Then redeploy and validate the gateway again:
+
+```sh
+scripts/selfhosted deploy gateway production
+scripts/selfhosted status gateway
+scripts/selfhosted logs gateway
+```
+
+Do not delete or replace `services/artifactory/var`; this workaround only
+changes the gateway route. Keep `jfconnect.enabled: false` unless a future
+installation also provides the JFConnect service and needs an entitlement-
+backed feature such as Curation.
 
 Inspect the condition with:
 
