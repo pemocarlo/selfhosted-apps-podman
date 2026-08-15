@@ -11,9 +11,11 @@
 
 	# The CE frontend requests optional product MFEs that are not present in
 	# this image. Preserve their 404 response without sending each request
-	# through Artifactory's router and frontend services.
-	@optional_mfe_manifest path_regexp optional_mfe_manifest ^/ui/api/v1/(apptrust|bridge-client|bridge-server|catalog|compliance|distribution|evaluation|evidence|fastci|grid|insight|mc|ml|onemodel|pfed|pipe|runtime|ui|unifiedpolicy|worker|wingman|xray|xsc)/.*(manifest|app)(\.esm|\.umd)?\.js$
+	# through Artifactory's router and frontend services. Keep the core `ui`
+	# prefix out of this matcher: its app.umd.js bundle is required by the shell.
+	@optional_mfe_manifest path_regexp optional_mfe_manifest ^/ui/api/v1/(apptrust|bridge-client|bridge-server|catalog|compliance|distribution|evaluation|evidence|fastci|grid|insight|mc|ml|onemodel|pfed|pipe|runtime|unifiedpolicy|worker|wingman|xray|xsc)/.*(manifest|app)(\.esm|\.umd)?\.js$
 	handle @optional_mfe_manifest {
+		header Cache-Control "no-store"
 		respond "" 404
 	}
 

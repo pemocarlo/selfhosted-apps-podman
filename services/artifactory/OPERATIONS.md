@@ -87,8 +87,11 @@ curl -ksS "https://$ARTIFACTORY_HOST/ui/api/v1/enrichment/lead/chilipiper" \
 
 The same route short-circuits an allowlist of CE-missing optional MFE manifest
 and app assets with an empty `404`, preserving the browser-visible result
-without sending each request through Artifactory. Verify this behavior after
-an image update:
+without sending each request through Artifactory. The core `/ui/api/v1/ui/`
+prefix is deliberately excluded because it contains required shell bundles.
+The workaround marks these synthetic `404`s `no-store` so a CDN does not keep
+an optional response after a later image update.
+Verify an optional path after an image update:
 
 ```sh
 curl -ksS "https://$ARTIFACTORY_HOST/ui/api/v1/onemodel/webapp/manifest.js" \
@@ -99,6 +102,11 @@ The response should be `404` with zero bytes. If a future image provides one
 of these modules, remove its path from the Caddy allowlist before deploying.
 All other UI, Artifactory, and Conan paths continue to use
 `reverse_proxy artifactory:8082`.
+
+If a required bundle was previously served as a `404` by a CDN, purge that
+exact URL or wait for the CDN's negative-cache lifetime after correcting the
+route. A cache-busting query string is useful for testing but does not repair
+the URL already cached by a browser or CDN.
 
 Deploy and validate gateway-only changes without restarting Artifactory:
 
