@@ -63,7 +63,7 @@ scripts/selfhosted list                    # show available/installed/disabled a
 scripts/selfhosted deploy <name>           # install or re-enable one app
 scripts/selfhosted add <name>              # explicit alias for first installation
 scripts/selfhosted enable <name>           # re-enable a disabled/removed app
-scripts/selfhosted restart <name|gateway>  # restart without pulling an image
+scripts/selfhosted restart <name|gateway|all> # restart without pulling an image
 scripts/selfhosted update <name|gateway>   # pull and restart one component
 scripts/selfhosted update all              # update every enabled component
 scripts/selfhosted disable <name>           # temporary stop; preserve all data
@@ -90,11 +90,11 @@ repository/                         version-controlled definitions
 
 Never commit real env files, credentials, keys, databases, uploads, or backups. Commit only sanitized env templates.
 
-See [manual installation](docs/manual.md) for direct Podman/systemd commands, [adding a service](docs/adding-a-service.md) for the repository pattern, and [operations](docs/operations.md) for maintenance.
+See [manual operation](docs/manual.md) for direct Podman/systemd commands and lifecycle explanations, [adding a service](docs/adding-a-service.md) for the repository pattern, and [operations](docs/operations.md) for maintenance.
 
 ## Optional GitHub deployment
 
-The included workflow deploys over SSH. Configure the `production` environment with secrets `VPS_HOST`, `VPS_USER`, `VPS_PORT`, `VPS_SSH_KEY`, and trusted `VPS_KNOWN_HOSTS`. `VPS_DEPLOY_PATH` defaults to `selfhosted-infra`. Complete the first deployment on the VPS to create and edit runtime env files.
+The included workflow deploys over direct SSH. The runner must be able to reach the VPS directly; no bastion host or tunnel is configured. Configure the `production` environment with secrets `VPS_HOST`, `VPS_USER`, `VPS_PORT`, `VPS_SSH_KEY`, and trusted `VPS_KNOWN_HOSTS`. `VPS_DEPLOY_PATH` defaults to `selfhosted-infra`. Complete the first deployment on the VPS to create and edit runtime env files.
 
 Use a dedicated Ed25519 key and verify the host key independently. Protect the GitHub environment with required reviewers when appropriate.
 

@@ -210,7 +210,6 @@ deploy_gateway() {
   install -m 0644 "$source/Caddyfile" "$target/Caddyfile"
   sync_managed_files "$source/conf.d" "$target/conf.d" "$target/.installed-conf-files"
   sync_managed_files "$source/site" "$target/site" "$target/.installed-site-files"
-  cp -a "$source/site/." "$target/site/"
   install_templates "$source" "$target"
   reject_placeholders "$target"
   validate_caddy "$target" "$target/caddy.env"
@@ -234,7 +233,6 @@ deploy_app() {
   systemctl --user daemon-reload
   unit_list="$(units "$source")"
   [[ -z "$unit_list" ]] || systemctl --user restart $unit_list
-  systemctl --user try-restart caddy-static.service
   printf 'deployed %s\n' "$app"
 }
 

@@ -1,6 +1,6 @@
 # Operations
 
-See the root [README](../README.md) for setup and [manual installation](manual.md) for direct commands.
+See the root [README](../README.md) for setup and [manual operation](manual.md) for direct commands and lifecycle explanations.
 
 ## Quadlet operation
 
