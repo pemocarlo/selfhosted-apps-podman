@@ -207,39 +207,113 @@ database, keys, and repository data.
 ## Backup and restore
 
 Back up the runtime env file and the complete Artifactory state directory.
-Stop Artifactory first so the Derby database is quiescent. The archive contains
-credentials, so store it outside the repository with restrictive permissions:
+Stop Artifactory first so the Derby database is quiescent. This installation
+uses a rootless `:U` volume mount, so the host user can see `var` but cannot
+read it directly after Podman maps its ownership to subordinate IDs. Run the
+archive and extraction sides through `podman unshare`; a plain host `tar`
+fails with `Permission denied`.
+
+The archive contains credentials, so store it outside the repository with
+restrictive permissions. This complete backup-and-restore-check sequence
+leaves the service running if it was running before the test, and restores
+only into a temporary directory:
 
 ```sh
+set -Eeuo pipefail
+
 backup_dir=~/backups/artifactory
 backup_file="$backup_dir/artifactory-$(date +%Y%m%d-%H%M%S).tar.gz"
 mkdir -p "$backup_dir"
 chmod 700 "$backup_dir"
 
-systemctl --user stop artifactory.service
-if ! tar -C ~/selfhosted/services -czf "$backup_file" artifactory; then
-  systemctl --user start artifactory.service
-  exit 1
+service_was_active=false
+if systemctl --user is-active --quiet artifactory.service; then
+  service_was_active=true
 fi
-systemctl --user start artifactory.service
+archive_complete=false
+
+restore_dir=""
+cleanup() {
+  status=$?
+  if [ "$archive_complete" = false ] && [ -e "$backup_file" ]; then
+    rm -f -- "$backup_file" || status=$?
+  fi
+  if [ -n "$restore_dir" ]; then
+    podman unshare rm -rf "$restore_dir" || status=$?
+  fi
+  if [ "$service_was_active" = true ]; then
+    systemctl --user start artifactory.service || status=$?
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+
+if [ "$service_was_active" = true ]; then
+  systemctl --user stop artifactory.service
+fi
+
+# gzip writes the archive as the host user; podman unshare reads the :U tree.
+podman unshare tar -C ~/selfhosted/services -cf - artifactory | gzip -n > "$backup_file"
 chmod 600 "$backup_file"
+archive_complete=true
+
 tar -tzf "$backup_file" >/dev/null
-systemctl --user is-active artifactory.service
+tar -tzf "$backup_file" | grep -Fx 'artifactory/artifactory.env' >/dev/null
+tar -tzf "$backup_file" | grep -Eq '^artifactory/var(/|$)'
+
+restore_dir=$(mktemp -d "$backup_dir/restore-test.XXXXXX")
+podman unshare sh -c \
+  'gzip -dc "$1" | tar --no-same-owner -x -C "$2"' \
+  sh "$backup_file" "$restore_dir"
+podman unshare cmp \
+  ~/selfhosted/services/artifactory/artifactory.env \
+  "$restore_dir/artifactory/artifactory.env"
+podman unshare diff -qr \
+  ~/selfhosted/services/artifactory/var \
+  "$restore_dir/artifactory/var" >/dev/null
+
+printf 'verified backup: %s\n' "$backup_file"
 ```
 
-Keep at least one backup off the VPS and test a restore before relying on it.
-To restore, stop Artifactory, verify the archive path, extract it over the
-runtime state, and start the service again:
+The `podman unshare diff` comparison verifies the extracted contents while
+Artifactory is stopped. The cleanup trap removes the temporary restore
+directory and starts the service again. Wait for both health checks to return
+`200`; `systemctl --user is-active` can become `active` several minutes before
+Artifactory is ready to serve requests.
+
+Keep at least one verified backup off the VPS. To perform an actual restore,
+preserve the current state separately first, verify the archive listing, stop
+Artifactory, and extract through the same rootless namespace:
 
 ```sh
 backup_file=~/backups/artifactory/<verified-archive>.tar.gz
+set -Eeuo pipefail
+tar -tzf "$backup_file" >/dev/null
+
+restart_needed=false
+restart_artifactory() {
+  status=$?
+  if [ "$restart_needed" = true ]; then
+    systemctl --user start artifactory.service || status=$?
+  fi
+  exit "$status"
+}
+trap restart_artifactory EXIT
 systemctl --user stop artifactory.service
-tar -C ~/selfhosted/services --no-same-owner -xzf "$backup_file"
+restart_needed=true
+
+gzip -dc "$backup_file" | podman unshare tar \
+  --no-same-owner -x -C ~/selfhosted/services
+
 systemctl --user start artifactory.service
+restart_needed=false
+trap - EXIT
 systemctl --user is-active artifactory.service
 ```
 
-Restoring overwrites the current Artifactory env file and data directory.
+Restoring overwrites the current Artifactory env file and `var` directory.
+The final `is-active` check only confirms that systemd started the container;
+also run the two HTTP health checks above and wait for `200` responses.
 Preserve the current state separately if you may need to undo the restore.
 
 ## Lifecycle and updates

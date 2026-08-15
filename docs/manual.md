@@ -422,3 +422,5 @@ Back up runtime state, not generated containers or images:
 For database-backed apps, stop the relevant app or use its database-native
 backup tool for a consistent snapshot. Test a restore before relying on a
 backup.
+Artifactory uses a rootless `:U` volume; its service README documents the
+required `podman unshare` backup and restore workflow.

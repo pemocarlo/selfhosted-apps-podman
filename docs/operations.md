@@ -78,3 +78,6 @@ Back up runtime state, not generated containers:
 - `~/selfhosted/services/` (env files and every app data directory)
 
 Stop a single app or use its database-native backup tool for a consistent database snapshot. Test restores regularly; a backup that has never been restored is unverified.
+Artifactory uses a rootless `:U` volume, so follow its service README's
+`podman unshare` backup and restore workflow; a plain host `tar` cannot read
+that state directory.
