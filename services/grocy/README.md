@@ -27,8 +27,8 @@ scripts/selfhosted restart grocy
 scripts/selfhosted update grocy
 ```
 
-Sign in with the initial `admin` / `admin` credentials and change the password
-immediately. After an image update, open Grocy's root page once so pending
+Sign in with the image's initial administrator credentials and change the
+password immediately. After an image update, open Grocy's root page once so pending
 database migrations can run.
 
 Persistent application data is under

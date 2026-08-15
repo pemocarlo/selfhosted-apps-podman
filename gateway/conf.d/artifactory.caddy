@@ -9,6 +9,14 @@
 		respond "{}" 200
 	}
 
+	# The CE frontend requests optional product MFEs that are not present in
+	# this image. Preserve their 404 response without sending each request
+	# through Artifactory's router and frontend services.
+	@optional_mfe_manifest path_regexp optional_mfe_manifest ^/ui/api/v1/(apptrust|bridge-client|bridge-server|catalog|compliance|distribution|evaluation|evidence|fastci|grid|insight|mc|ml|onemodel|pfed|pipe|runtime|ui|unifiedpolicy|worker|wingman|xray|xsc)/.*(manifest|app)(\.esm|\.umd)?\.js$
+	handle @optional_mfe_manifest {
+		respond "" 404
+	}
+
 	handle {
 		reverse_proxy artifactory:8082
 	}

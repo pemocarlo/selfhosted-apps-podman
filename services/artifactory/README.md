@@ -1,357 +1,75 @@
 # Artifactory CE for C/C++
 
-JFrog Artifactory Community Edition for C/C++ provides a Conan repository,
-web UI, permissions, and APIs. It is the team-oriented option in this
-repository. The image uses the embedded Derby database for a small, single-node
-installation.
+JFrog Artifactory Community Edition for C/C++ provides a team-facing Conan
+repository, web UI, permissions, and APIs. This repository runs the small
+single-node image with its embedded Derby database. It is resource-intensive;
+use PostgreSQL and JFrog's production architecture for larger installations.
 
 ## Before deployment
 
-- Check JFrog's [system requirements](https://docs.jfrog.com/installation/docs/artifactory-system-requirements-and-platform-support); Artifactory is resource-intensive.
-- Decide the public hostname and set `ARTIFACTORY_SITE_ADDRESS` in the gateway env file.
-- Plan a backup of `~/selfhosted/services/artifactory/var` before the first update.
+- Review JFrog's [system requirements](https://docs.jfrog.com/installation/docs/artifactory-system-requirements-and-platform-support).
+- Choose the public hostname and set `ARTIFACTORY_SITE_ADDRESS` in the gateway
+  environment file.
+- Plan a verified backup of the complete Artifactory state before updates.
 
 ## Deploy and configure
 
-Set the production hostname in `~/selfhosted/gateway/caddy.env`, deploy the
-gateway first so that the shared network exists, and then deploy Artifactory:
+Set the production hostname, deploy the gateway so that the shared network
+exists, and then deploy Artifactory:
 
 ```sh
-sed -i 's/^ARTIFACTORY_SITE_ADDRESS=.*/ARTIFACTORY_SITE_ADDRESS=artifactory.example.com/' \
+ARTIFACTORY_HOST=artifactory.example.com
+sed -i "s#^ARTIFACTORY_SITE_ADDRESS=.*#ARTIFACTORY_SITE_ADDRESS=$ARTIFACTORY_HOST#" \
   ~/selfhosted/gateway/caddy.env
 scripts/selfhosted deploy gateway production
 scripts/selfhosted deploy artifactory
 ```
 
-On the first login, complete the onboarding wizard: change the default
-`admin` / `password` credentials and set the base URL to the public HTTPS
-hostname. In the CE image, create the local Conan repository from the UI:
+On first login, complete the onboarding wizard, replace the image's factory
+administrator credentials, and set the base URL to the public HTTPS hostname.
+In the CE image, create a local Conan repository from the UI:
 Administration → Repositories → Add Repository → Local → Conan. The generic
-repository REST API is Pro-only in this edition. The password can be changed
-later in the Administration UI, but the default password must not be left in
-use.
+repository REST API is Pro-only in this edition.
 
 Configure a Conan client using the repository URL shown by Artifactory:
 
 ```sh
-conan remote add artifactory https://artifactory.example.com/artifactory/api/conan/conan-local
-conan remote login artifactory <user>
+conan remote add artifactory \
+  "https://$ARTIFACTORY_HOST/artifactory/api/conan/conan-local"
+CONAN_USER=your-username
+conan remote login artifactory "$CONAN_USER"
 ```
 
-## This installation
+## Runtime layout
 
-The VPS is configured with:
+- Persistent state: `~/selfhosted/services/artifactory/var`
+- Runtime environment: `~/selfhosted/services/artifactory/artifactory.env`
+- Gateway upstream: `artifactory:8082` on `caddy-public`
+- Image: `releases-docker.jfrog.io/jfrog/artifactory-cpp-ce:latest`
 
-- runtime state: `~/selfhosted/services/artifactory/var`
-- gateway route: `artifactory:8082` on the shared `caddy-public` network
-- image: `releases-docker.jfrog.io/jfrog/artifactory-cpp-ce:latest`
+The environment file is generated from
+`services/artifactory/artifactory.example.env` and remains mode `0600`.
+The tracked `services/artifactory/var/etc/system.yaml` is only a small,
+non-secret bootstrap seed. The runtime file gains generated keys and settings;
+never replace it with the repository seed or commit the runtime `var` tree.
 
-The working deployment order is:
+Fresh installs seed `jfconnect.enabled: false` because this CE image does not
+provide the JFConnect process. Re-enable it only when the installation also
+needs an entitlement-backed feature such as Curation and has the required
+JFrog service available.
 
-```sh
-scripts/selfhosted deploy gateway production
-scripts/selfhosted deploy artifactory
-```
+## Operations
 
-The Artifactory env file is generated from
-`services/artifactory/artifactory.example.env` and remains mode `0600`. The
-initial installation currently retains JFrog's default `admin` / `password`
-login until it is changed through the UI.
+See [Artifactory operations](OPERATIONS.md) for startup health checks, optional
+CE integrations, performance/resource troubleshooting, backups and restores,
+updates, and rollback guidance.
 
-Fresh installs also seed `var/etc/system.yaml` with the root-level setting
-`jfconnect.enabled: false`. `scripts/selfhosted` copies this seed only when
-the runtime file does not already exist, so it does not overwrite generated
-keys, database settings, or an administrator's later configuration changes.
-Re-enable JFConnect manually in that file, then restart Artifactory, if a
-future installation needs Curation or another entitlement-backed feature.
-
-### Configuration ownership
-
-The tracked `services/artifactory/var/etc/system.yaml` is intentionally only
-a small, non-secret bootstrap seed. The complete runtime file at
-`~/selfhosted/services/artifactory/var/etc/system.yaml` belongs to the
-installation: JFrog may add generated settings and it is covered by the
-private state backup. Do not replace the runtime file with a repository copy,
-and do not commit the full runtime `var` directory. This keeps generated keys,
-installation-specific settings, and future JFrog changes out of Git while
-still making the fresh-install JFConnect default reproducible.
-
-## Troubleshooting
-
-### Slow first screen
-
-The first startup or restart can take several minutes while Artifactory
-initializes its services and embedded Derby database. Temporary `502` or `503`
-responses are expected during that window. Wait until both checks return `200`:
-
-```sh
-curl -fsS https://<artifactory-host>/artifactory/api/system/ping
-curl -fsS https://<artifactory-host>/router/api/v1/system/health
-```
-
-Once those checks pass, the login page should load quickly. If the JFrog logo
-still spins, look for this repeating frontend error:
-
-```text
-First-time entitlement fetch failed: 12 UNIMPLEMENTED: Received HTTP status code 404
-```
-
-This indicates that the CE image has JFConnect enabled but does not have a
-JFConnect process available. The frontend retries the missing entitlement
-endpoint, causing the spinner and extra CPU; this is inside Artifactory, not
-Caddy or DNS.
-
-For this image, disable that integration and restart Artifactory:
-
-```sh
-podman exec artifactory cp -p \
-  /var/opt/jfrog/artifactory/etc/system.yaml \
-  /var/opt/jfrog/artifactory/etc/system.yaml.before-jfconnect-disable
-podman exec artifactory sed -i \
-  '/^jfconnect:/{n;s/enabled: true/enabled: false/;}' \
-  /var/opt/jfrog/artifactory/etc/system.yaml
-scripts/selfhosted restart artifactory
-```
-
-Verify the `jfconnect` section contains `enabled: false`, health checks pass,
-and the frontend log is quiet. This preserves the data directory and is
-reversible by restoring the saved file:
-
-```sh
-podman exec artifactory cp -p \
-  /var/opt/jfrog/artifactory/etc/system.yaml.before-jfconnect-disable \
-  /var/opt/jfrog/artifactory/etc/system.yaml
-scripts/selfhosted restart artifactory
-```
-
-JFrog documents JFConnect as required for Curation, so re-evaluate this
-setting before enabling Curation or other entitlement-backed features, and
-after changing the image version.
-
-### Login popup from optional lead enrichment
-
-The CE frontend may request the following optional endpoint after login even
-when JFConnect is intentionally disabled:
-
-```text
-/ui/api/v1/enrichment/lead/chilipiper
-```
-
-On this CE image, the request reaches the frontend service, which tries to
-initialize JFConnect and returns `500` because `jfconnect.enabled` is `false`.
-The result is a browser popup such as `Server Error — Request failed with
-status code 500`. The `frontend.featureToggler.commonShouldEnableChiliPiper`
-setting is not accepted by this CE build, so do not add it to `system.yaml`.
-
-The tracked Caddy route in `gateway/conf.d/artifactory.caddy` handles only this
-optional endpoint and returns an empty JSON success response. All other
-Artifactory and Conan paths continue to use `reverse_proxy artifactory:8082`.
-This keeps JFConnect disabled and avoids changing Artifactory data or
-authentication behavior.
-
-Deploy and validate the workaround with:
-
-```sh
-scripts/selfhosted deploy gateway production
-
-curl -ksS https://<artifactory-host>/ui/api/v1/enrichment/lead/chilipiper \
-  -o - -w '\nstatus=%{http_code} content_type=%{content_type}\n'
-curl -fsS https://<artifactory-host>/artifactory/api/system/ping
-curl -fsS https://<artifactory-host>/router/api/v1/system/health
-```
-
-The first command should return `{}` with status `200` and content type
-`application/json`; the health checks should also return `200`. A normal
-Artifactory login may still cause the browser to issue the optional request,
-but Caddy answers it locally so it does not reach Artifactory or produce a
-popup.
-
-To revert the workaround, remove the `@chilipiper` matcher and its `handle`
-block from `gateway/conf.d/artifactory.caddy`, restore the direct proxy:
-
-```caddyfile
-{$ARTIFACTORY_SITE_ADDRESS:http://artifactory.localhost:80} {
-    encode zstd gzip
-    reverse_proxy artifactory:8082
-}
-```
-
-Then redeploy and validate the gateway again:
-
-```sh
-scripts/selfhosted deploy gateway production
-scripts/selfhosted status gateway
-scripts/selfhosted logs gateway
-```
-
-Do not delete or replace `services/artifactory/var`; this workaround only
-changes the gateway route. Keep `jfconnect.enabled: false` unless a future
-installation also provides the JFConnect service and needs an entitlement-
-backed feature such as Curation.
-
-Inspect the condition with:
-
-```sh
-scripts/selfhosted status artifactory
-scripts/selfhosted logs artifactory
-podman stats --no-stream artifactory
-podman exec artifactory sh -c \
-  'grep -n -A2 "^jfconnect:" /var/opt/jfrog/artifactory/etc/system.yaml; \
-   ps -ef | grep -i jfconnect | grep -v grep || true'
-```
-
-If the checks still fail, inspect the service logs and container status before
-restarting again. Never delete the `var` directory: it contains the Derby
-database, keys, and repository data.
-
-## Backup and restore
-
-Back up the runtime env file and the complete Artifactory state directory.
-Stop Artifactory first so the Derby database is quiescent. This installation
-uses a rootless `:U` volume mount, so the host user can see `var` but cannot
-read it directly after Podman maps its ownership to subordinate IDs. Run the
-archive and extraction sides through `podman unshare`; a plain host `tar`
-fails with `Permission denied`.
-
-The archive contains credentials, so store it outside the repository with
-restrictive permissions. This complete backup-and-restore-check sequence
-leaves the service running if it was running before the test, and restores
-only into a temporary directory:
-
-```sh
-set -Eeuo pipefail
-
-backup_dir=~/backups/artifactory
-backup_file="$backup_dir/artifactory-$(date +%Y%m%d-%H%M%S).tar.gz"
-mkdir -p "$backup_dir"
-chmod 700 "$backup_dir"
-
-service_was_active=false
-if systemctl --user is-active --quiet artifactory.service; then
-  service_was_active=true
-fi
-archive_complete=false
-
-restore_dir=""
-cleanup() {
-  status=$?
-  if [ "$archive_complete" = false ] && [ -e "$backup_file" ]; then
-    rm -f -- "$backup_file" || status=$?
-  fi
-  if [ -n "$restore_dir" ]; then
-    podman unshare rm -rf "$restore_dir" || status=$?
-  fi
-  if [ "$service_was_active" = true ]; then
-    systemctl --user start artifactory.service || status=$?
-  fi
-  exit "$status"
-}
-trap cleanup EXIT
-
-if [ "$service_was_active" = true ]; then
-  systemctl --user stop artifactory.service
-fi
-
-# gzip writes the archive as the host user; podman unshare reads the :U tree.
-podman unshare tar -C ~/selfhosted/services -cf - artifactory | gzip -n > "$backup_file"
-chmod 600 "$backup_file"
-archive_complete=true
-
-tar -tzf "$backup_file" >/dev/null
-tar -tzf "$backup_file" | grep -Fx 'artifactory/artifactory.env' >/dev/null
-tar -tzf "$backup_file" | grep -Eq '^artifactory/var(/|$)'
-
-restore_dir=$(mktemp -d "$backup_dir/restore-test.XXXXXX")
-podman unshare sh -c \
-  'gzip -dc "$1" | tar --no-same-owner -x -C "$2"' \
-  sh "$backup_file" "$restore_dir"
-podman unshare cmp \
-  ~/selfhosted/services/artifactory/artifactory.env \
-  "$restore_dir/artifactory/artifactory.env"
-podman unshare diff -qr \
-  ~/selfhosted/services/artifactory/var \
-  "$restore_dir/artifactory/var" >/dev/null
-
-printf 'verified backup: %s\n' "$backup_file"
-```
-
-The `podman unshare diff` comparison verifies the extracted contents while
-Artifactory is stopped. The cleanup trap removes the temporary restore
-directory and starts the service again. Wait for both health checks to return
-`200`; `systemctl --user is-active` can become `active` several minutes before
-Artifactory is ready to serve requests.
-
-Keep at least one verified backup off the VPS. To perform an actual restore,
-preserve the current state separately first, verify the archive listing, stop
-Artifactory, and extract through the same rootless namespace:
-
-```sh
-backup_file=~/backups/artifactory/<verified-archive>.tar.gz
-set -Eeuo pipefail
-tar -tzf "$backup_file" >/dev/null
-
-restart_needed=false
-restart_artifactory() {
-  status=$?
-  if [ "$restart_needed" = true ]; then
-    systemctl --user start artifactory.service || status=$?
-  fi
-  exit "$status"
-}
-trap restart_artifactory EXIT
-systemctl --user stop artifactory.service
-restart_needed=true
-
-gzip -dc "$backup_file" | podman unshare tar \
-  --no-same-owner -x -C ~/selfhosted/services
-
-systemctl --user start artifactory.service
-restart_needed=false
-trap - EXIT
-systemctl --user is-active artifactory.service
-```
-
-Restoring overwrites the current Artifactory env file and `var` directory.
-The final `is-active` check only confirms that systemd started the container;
-also run the two HTTP health checks above and wait for `200` responses.
-Preserve the current state separately if you may need to undo the restore.
-
-## Lifecycle and updates
-
-```sh
-scripts/selfhosted status artifactory
-scripts/selfhosted logs artifactory --follow
-scripts/selfhosted restart artifactory
-scripts/selfhosted update artifactory
-```
-
-All persistent state is under `~/selfhosted/services/artifactory/var`; the
-env file is `~/selfhosted/services/artifactory/artifactory.env`. Restarting,
-disabling, or removing the service definition does not intentionally delete
-these paths.
-
-The image uses a floating `latest` tag. Review JFrog release notes, take and
-verify a backup, then update only Artifactory:
-
-```sh
-scripts/selfhosted update artifactory
-scripts/selfhosted status artifactory
-scripts/selfhosted logs artifactory --follow
-```
-
-Allow several minutes for the first startup after an update. Automatic image
-updates are not enabled by this repository. If an update fails, keep the data
-directory, inspect the logs, and restore the last verified backup rather than
-deleting runtime state.
-
-For larger or critical installations, use PostgreSQL and follow JFrog's
-documented production architecture rather than this small embedded database
-layout.
+The root [operations guide](../../docs/operations.md) contains the general
+resource-pressure workflow for every service.
 
 ## Further reading
 
 - [Artifactory installation](https://docs.jfrog.com/installation/docs/installing-artifactory)
 - [JFConnect microservice](https://docs.jfrog.com/installation/docs/jfconnect-microservice)
 - [Onboarding wizard](https://docs.jfrog.com/installation/docs/onboarding-wizard)
-- [Conan repositories in Artifactory](https://docs.jfrog.com/artifactory/docs/conan-repositories)
-- [Repository operations](../../docs/operations.md)
+- [Conan repositories](https://docs.jfrog.com/artifactory/docs/conan-repositories)

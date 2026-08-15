@@ -306,15 +306,16 @@ ssh -p "$PORT" "$USER@$HOST" \
 
 ## Routine VPS health check
 
-This is the read-only check sequence used to inspect a VPS over SSH. Replace
-`contabonew` with the SSH host alias or hostname and replace the two example
+This is the read-only check sequence used to inspect a VPS over SSH. Set
+`SSH_HOST` to the local SSH alias or hostname and replace the two example
 domains with the sites that should currently be public.
 
 The first command checks the host, rootless Podman, user systemd, repository
 state, services, containers, and the shared network:
 
 ```sh
-ssh contabonew 'cd ~/selfhosted-infra
+SSH_HOST=your-vps-alias
+ssh "$SSH_HOST" 'cd ~/selfhosted-infra
 id
 hostname
 uname -sr
@@ -337,7 +338,7 @@ systemd manager, active services, and the expected number of containers on
 Run repository, Quadlet, and Caddy validation separately when needed:
 
 ```sh
-ssh contabonew 'cd ~/selfhosted-infra && scripts/selfhosted check'
+ssh "$SSH_HOST" 'cd ~/selfhosted-infra && scripts/selfhosted check'
 ```
 
 This does not restart services or alter application data. If the validation
@@ -349,7 +350,7 @@ HTTPS; the command below follows that redirect and should end with the
 application response, commonly `200`:
 
 ```sh
-ssh contabonew 'podman exec caddy-static caddy validate --config /etc/caddy/Caddyfile
+ssh "$SSH_HOST" 'podman exec caddy-static caddy validate --config /etc/caddy/Caddyfile
 awk -F= "/^[A-Za-z0-9_]+_SITE_ADDRESS=/ {print \$1 \"=\" \$2}" "$HOME/selfhosted/gateway/caddy.env"
 for host in grocy.example.com bookstack.example.com; do
   curl -fsS -L -o /dev/null -w "$host %{http_code} ssl=%{ssl_verify_result}\n" \
@@ -364,7 +365,7 @@ verification.
 Check failed user units, listeners, and resource pressure:
 
 ```sh
-ssh contabonew 'systemctl --user --failed --no-legend || true
+ssh "$SSH_HOST" 'systemctl --user --failed --no-legend || true
 ss -lntup | awk "NR==1 || /:80 |:443 /"
 df -h "$HOME" | tail -n 1
 free -h | awk "NR==1 || NR==2"
@@ -410,6 +411,13 @@ For an unreachable production site, check the hostname in
 HTTP/3), the Caddy logs, and the upstream container name. Keep the VPS clock
 correct because Caddy stores certificates under `$STATE/gateway/data`.
 
+### High CPU or memory usage
+
+Use the canonical [resource-pressure workflow](operations.md#detecting-high-cpu-or-memory-usage)
+for the layered host, systemd, container, process, and log checks. For
+Artifactory-specific interpretation and optional endpoint guidance, see the
+[Artifactory operations runbook](../services/artifactory/OPERATIONS.md).
+
 ## Backups
 
 Back up runtime state, not generated containers or images:
@@ -422,5 +430,6 @@ Back up runtime state, not generated containers or images:
 For database-backed apps, stop the relevant app or use its database-native
 backup tool for a consistent snapshot. Test a restore before relying on a
 backup.
-Artifactory uses a rootless `:U` volume; its service README documents the
-required `podman unshare` backup and restore workflow.
+Artifactory uses a rootless `:U` volume; its
+[detailed operations runbook](../services/artifactory/OPERATIONS.md) documents
+the required `podman unshare` backup and restore workflow.

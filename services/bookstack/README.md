@@ -24,8 +24,7 @@ scripts/selfhosted deploy bookstack
 ```
 
 Set `BOOKSTACK_SITE_ADDRESS` in `~/selfhosted/gateway/caddy.env` and redeploy
-the gateway. Change the initial `admin@admin.com` / `password` login
-immediately.
+the gateway. Change the image's initial administrator credentials immediately.
 
 ## Lifecycle and data
 
